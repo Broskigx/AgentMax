@@ -2,7 +2,7 @@ name: AgentMax CI
 
 on:
   push:
-    branches: [main, master, fix/**, feat/**]
+    branches: [main, master, fix/**, feat/**, feature/**]
   pull_request:
     branches: [main, master]
 
@@ -16,6 +16,8 @@ jobs:
           python-version: "3.11"
       - name: Install Python deps
         run: pip install -r requirements.txt
+      - name: Repository safety
+        run: python scripts/check_repo_safety.py
       - name: Pytest
         run: python -m pytest -q
 

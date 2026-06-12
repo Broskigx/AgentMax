@@ -2,6 +2,7 @@
 
 import asyncio
 
+from core.beta import rest_api
 from core.ipc import IPC_API_VERSION, IPCServer
 
 
@@ -30,8 +31,26 @@ def test_health_matches_ui_contract():
     assert body["backend"] == "agentmax"
     assert body["version"] == "0.1.1"
     assert body["ipc_auth_enabled"] is False
+    assert body["runtime_mode"] == "full"
+    assert body["limited"] is False
+    assert body["fallback_reason"] is None
+    assert "capabilities" in body
     assert body["tester_id"]
     assert "agust" not in body["tester_id"].lower()
+
+
+def test_health_reports_limited_fallback_explicitly(monkeypatch):
+    monkeypatch.setattr(rest_api, "RUNTIME_MODE", "beta_fallback")
+    monkeypatch.setattr(rest_api, "BACKEND_ID", "agentmax_beta_fallback")
+    monkeypatch.setattr(rest_api, "APP_VERSION", "0.1.1-limited")
+    monkeypatch.setenv("AGENTMAX_FALLBACK_REASON", "dependency unavailable")
+
+    body = _rest("GET", "/health")
+
+    assert body["backend"] == "agentmax_beta_fallback"
+    assert body["runtime_mode"] == "beta_fallback"
+    assert body["limited"] is True
+    assert body["fallback_reason"] == "dependency unavailable"
 
 
 def test_beta_config_route():

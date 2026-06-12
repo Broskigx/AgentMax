@@ -10,6 +10,16 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from core.config import get_config
+from core.feature_flags import FeatureFlags, disabled_features
+from core.htlgg import (
+    DecisionRecord,
+    ExecutionOutcome,
+    ExecutionRecord,
+    HtlggEnvelope,
+    RiskLevel,
+)
+from core.security.policy import SecurityPolicy
 from core.tools.context_bridge import ToolContextBridge
 from core.tools.fallback import ToolFallbackManager
 from core.tools.input_monitor import UserInputMonitor
@@ -47,6 +57,7 @@ class ToolExecutor:
         context_bridge: ToolContextBridge | None = None,
         fallback: ToolFallbackManager | None = None,
         input_monitor: UserInputMonitor | None = None,
+        security_policy: SecurityPolicy | None = None,
     ) -> None:
         self.registry = registry or ToolRegistry.default()
         self.validator = validator or ToolValidator()
@@ -58,6 +69,9 @@ class ToolExecutor:
         self.context_bridge = context_bridge or ToolContextBridge()
         self.fallback = fallback or ToolFallbackManager()
         self.input_monitor = input_monitor or UserInputMonitor()
+        configured_dirs = getattr(get_config().security, "allowed_fs_dirs", [])
+        self.security_policy = security_policy or SecurityPolicy(configured_dirs)
+        self._physical_lock = asyncio.Lock()
         self.router = ToolRouter()
         self.normalizer = ToolResultNormalizer()
 
@@ -91,7 +105,7 @@ class ToolExecutor:
             user_idle=not self.input_monitor.pause_controller.paused,
             extra={
                 "input_control": True,
-                "computer_control_granted": bool(step.get("_computer_control_granted")),
+                "session_id": step.get("_session_id") or step.get("session_id"),
             },
         )
         if context.bus and self.logger.bus is None:
@@ -107,16 +121,14 @@ class ToolExecutor:
                 request, "tool.unknown", f"Unknown tool: {request.tool_id}"
             )
             await self.logger.failed(result)
+            await self._emit_htlgg_execution(request, context, result)
             return result
 
-        self.input_monitor.start_task(request.task_id)
-        try:
-            result = await self._execute_with_retries(definition, request, context)
-            if not result.success:
-                result = await self._try_fallbacks(definition, request, context, result)
-            return result
-        finally:
-            self.input_monitor.stop_task()
+        result = await self._execute_with_retries(definition, request, context)
+        if not result.success:
+            result = await self._try_fallbacks(definition, request, context, result)
+        await self._emit_htlgg_execution(request, context, result)
+        return result
 
     async def _execute_with_retries(
         self,
@@ -143,6 +155,53 @@ class ToolExecutor:
         *,
         attempt: int,
     ) -> ToolResult:
+        if self._is_physical_definition(definition):
+            async with self._physical_lock:
+                if request.dry_run:
+                    return await self._execute_once_locked(
+                        definition,
+                        request,
+                        context,
+                        attempt=attempt,
+                    )
+                self.input_monitor.configure(
+                    bus=context.bus,
+                    authorization_validator=lambda _task_id: self.permissions.validate(
+                        definition, request, context
+                    ).ok,
+                )
+                self.input_monitor.start_task(request.task_id)
+                try:
+                    if self.input_monitor.pause_controller.paused:
+                        await self.input_monitor.wait_until_safe()
+                    context.user_idle = True
+                    return await self._execute_once_locked(
+                        definition,
+                        request,
+                        context,
+                        attempt=attempt,
+                    )
+                except PermissionError as exc:
+                    return self.normalizer.failure(
+                        request, "tool.permission_required", str(exc)
+                    )
+                finally:
+                    self.input_monitor.stop_task()
+        return await self._execute_once_locked(
+            definition,
+            request,
+            context,
+            attempt=attempt,
+        )
+
+    async def _execute_once_locked(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+        *,
+        attempt: int,
+    ) -> ToolResult:
         t0 = time.monotonic()
         can_run, cooldown_reason = self.state.can_run(definition.id)
         if not can_run:
@@ -151,6 +210,16 @@ class ToolExecutor:
                 "tool.cooldown",
                 cooldown_reason or "Tool cooldown active",
             )
+
+        if not request.dry_run:
+            flags = self._feature_flags(context)
+            disabled = disabled_features(definition.id, flags, request.input)
+            if disabled:
+                return self.normalizer.failure(
+                    request,
+                    "tool.feature_disabled",
+                    f"Tool {definition.id} requires disabled feature(s): {', '.join(disabled)}",
+                )
 
         risk_block = self.risk.blocks_execution(definition, request.input)
         if risk_block:
@@ -181,8 +250,15 @@ class ToolExecutor:
         if not permission.ok:
             await self.logger.validation_failed(definition, request, permission.error_text())
             return self.normalizer.failure(
-                request, "tool.permission_denied", permission.error_text()
+                request, "tool.permission_required", permission.error_text()
             )
+
+        await self._emit_htlgg_decision(request, context, risk_report)
+
+        if not request.dry_run:
+            preflight_failure = await self._preflight_verification(definition, request, context)
+            if preflight_failure is not None:
+                return preflight_failure
 
         thinking = self._thinking_for(definition, request, risk_report)
         await self.logger.started(definition, request)
@@ -193,9 +269,16 @@ class ToolExecutor:
                 if self.input_monitor.pause_controller.paused:
                     self.state.mark_paused(definition.id, "paused_by_user")
                     await self.logger.paused(
-                        definition.id, request.task_id, "Control pausado por actividad del usuario"
+                        definition.id,
+                        request.task_id,
+                        "Control pausado por actividad del usuario",
                     )
-                    await self.input_monitor.wait_until_safe()
+                    try:
+                        await self.input_monitor.wait_until_safe()
+                    except PermissionError as exc:
+                        return self.normalizer.failure(
+                            request, "tool.permission_required", str(exc)
+                        )
                     await self.logger.resumed(definition.id, request.task_id)
                 context.user_idle = True
 
@@ -233,6 +316,74 @@ class ToolExecutor:
             await self.logger.failed(result)
         return result
 
+    async def _emit_htlgg_execution(
+        self,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+        result: ToolResult,
+    ) -> None:
+        bus = getattr(context.runtime, "htlgg", None)
+        if bus is None:
+            return
+        if result.success:
+            outcome = ExecutionOutcome.Y0
+        elif result.error_code == "tool.verification_failed":
+            outcome = ExecutionOutcome.Y2
+        elif result.error_code == "tool.permission_required":
+            outcome = ExecutionOutcome.Y3
+        elif result.error_code in {"tool.feature_disabled", "tool.confirmation_required"}:
+            outcome = ExecutionOutcome.Y4
+        elif result.error_code == "tool.timeout":
+            outcome = ExecutionOutcome.Y5
+        else:
+            outcome = ExecutionOutcome.Y1
+        x = request.input.get("x")
+        y = request.input.get("y")
+        await bus.emit(
+            HtlggEnvelope(
+                record=ExecutionRecord(
+                    action=request.tool_id,
+                    x=int(x) if isinstance(x, (int, float)) else None,
+                    y=int(y) if isinstance(y, (int, float)) else None,
+                    outcome=outcome,
+                    detail=result.error or "ok",
+                ),
+                session_id=str(context.extra.get("session_id") or request.task_id or "local"),
+                task_id=request.task_id,
+                metadata={"attempts": result.attempts, "confidence": result.confidence},
+            )
+        )
+
+    async def _emit_htlgg_decision(
+        self,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+        risk_report: dict[str, Any],
+    ) -> None:
+        bus = getattr(context.runtime, "htlgg", None)
+        if bus is None:
+            return
+        risk = {
+            "low": RiskLevel.R0,
+            "medium": RiskLevel.R1,
+            "high": RiskLevel.R2,
+            "critical": RiskLevel.R3,
+        }.get(str(risk_report.get("level")), RiskLevel.R1)
+        await bus.emit(
+            HtlggEnvelope(
+                record=DecisionRecord(
+                    action=request.tool_id,
+                    element_id=str(request.metadata.get("element_id") or ""),
+                    expected=str(request.metadata.get("expected_outcome") or ""),
+                    risk=risk,
+                    confirmed=bool(request.approved_risk),
+                ),
+                session_id=str(context.extra.get("session_id") or request.task_id or "local"),
+                task_id=request.task_id,
+                metadata={"confidence": request.metadata.get("confidence")},
+            )
+        )
+
     async def _try_fallbacks(
         self,
         definition: ToolDefinition,
@@ -240,6 +391,14 @@ class ToolExecutor:
         context: ToolExecutionContext,
         failed_result: ToolResult,
     ) -> ToolResult:
+        if failed_result.error_code in {
+            "tool.feature_disabled",
+            "tool.permission_required",
+            "tool.confirmation_required",
+            "tool.verification_failed",
+            "critical_risk_blocked",
+        }:
+            return failed_result
         for fallback_request in self.fallback.build_fallback_requests(
             definition, request, failed_result
         ):
@@ -249,10 +408,21 @@ class ToolExecutor:
             result = await self._execute_with_retries(
                 fallback_definition, fallback_request, context
             )
-            result.fallback_used = fallback_request.tool_id
             if result.success:
-                return result
+                failed_result.fallback_used = fallback_request.tool_id
+                failed_result.output["fallback_observation"] = {
+                    "tool": fallback_request.tool_id,
+                    "output": result.output,
+                }
+                failed_result.next_recommended_action = "replan_with_fallback_observation"
+                return failed_result
         return failed_result
+
+    @staticmethod
+    def _is_physical_definition(definition: ToolDefinition) -> bool:
+        return definition.id == "computer.execute" or definition.id.startswith(
+            ("mouse.", "keyboard.", "app.", "ui.")
+        )
 
     def _thinking_for(
         self,
@@ -275,6 +445,100 @@ class ToolExecutor:
             confidence=max(0.0, min(1.0, definition.reasoning_weight)),
         )
 
+    async def _preflight_verification(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+    ) -> ToolResult | None:
+        if not self._is_physical_definition(definition):
+            return None
+
+        capture = context.capture
+        if capture and hasattr(capture, "detect_animation"):
+            animation = await capture.detect_animation()
+            if animation in {"spinner", "transition", "typing", "scrolling"}:
+                if not hasattr(capture, "wait_for_stable_screen"):
+                    return self.normalizer.failure(
+                        request,
+                        "tool.verification_failed",
+                        f"Screen is currently {animation} and no stability check is available",
+                    )
+                stable = await capture.wait_for_stable_screen()
+                if not stable:
+                    return self.normalizer.failure(
+                        request,
+                        "tool.verification_failed",
+                        f"Screen did not stabilize from state: {animation}",
+                    )
+
+        explicit_confidence = request.metadata.get("confidence", request.input.get("confidence"))
+        if explicit_confidence is None:
+            has_grounded_coords = (
+                ("x" in request.input and "y" in request.input)
+                or bool(request.input.get("path"))
+                or all(key in request.input for key in ("x1", "y1", "x2", "y2"))
+            )
+            explicit_confidence = 1.0 if has_grounded_coords else definition.reasoning_weight
+        decision = self.risk.verification_policy(
+            definition,
+            request.input,
+            confidence=float(explicit_confidence),
+        )
+
+        if decision["action"] == "block":
+            return self.normalizer.failure(
+                request,
+                "tool.confirmation_required",
+                "Action confidence is below 0.50; clarification or explicit confirmation is required",
+            )
+        if decision["action"] == "reobserve":
+            if capture and hasattr(capture, "capture"):
+                await capture.capture()
+            return self.normalizer.failure(
+                request,
+                "tool.verification_failed",
+                "Action confidence is between 0.50 and 0.69; re-observation is required",
+            )
+        if decision["action"] != "pre_verify":
+            return None
+
+        target = request.input.get("target")
+        if definition.id.startswith(("mouse.", "app.", "ui.")):
+            target = target or request.input.get("text")
+        if not target:
+            if capture and hasattr(capture, "capture"):
+                frame = await capture.capture()
+                if frame:
+                    return None
+            return self.normalizer.failure(
+                request,
+                "tool.verification_failed",
+                "Reinforced pre-verification requires a current screen observation",
+            )
+        if isinstance(target, dict):
+            target = target.get("text") or target.get("description")
+        if not target:
+            return None
+
+        vision = context.agent_pool.get("vision")
+        if not vision or not hasattr(vision, "find_element"):
+            return self.normalizer.failure(
+                request,
+                "tool.verification_failed",
+                "A visual target requires an available element locator",
+            )
+        element = await vision.find_element(str(target))
+        bounds = getattr(element, "bounds", None) if element else None
+        confidence = float(getattr(element, "confidence", 0.0)) if element else 0.0
+        if not bounds or confidence < 0.70:
+            return self.normalizer.failure(
+                request,
+                "tool.verification_failed",
+                f"Visual target could not be verified at confidence >= 0.70 (actual={confidence:.2f})",
+            )
+        return None
+
     async def _run_builtin_tool(
         self,
         definition: ToolDefinition,
@@ -288,7 +552,9 @@ class ToolExecutor:
             "mouse.click": self._mouse_click,
             "mouse.right_click": self._mouse_click,
             "mouse.double_click": self._mouse_click,
+            "mouse.drag": self._mouse_drag,
             "mouse.scroll": self._mouse_scroll,
+            "computer.execute": self._computer_execute,
             "keyboard.type_text": self._keyboard_type,
             "keyboard.hotkey": self._keyboard_hotkey,
             "keyboard.press": self._keyboard_hotkey,
@@ -299,6 +565,8 @@ class ToolExecutor:
             "window.active": self._window_active,
             "app.open": self._app_open,
             "app.close": self._app_close,
+            "ui.navigate_vision": self._app_open,
+            "ui.close_window": self._app_close,
             "shell.run": self._shell_run,
             "filesystem.read": self._filesystem_read,
             "filesystem.write": self._filesystem_write,
@@ -318,6 +586,19 @@ class ToolExecutor:
                 request, "tool.handler_missing", f"No handler for {definition.id}"
             )
         return await handler(request, context)
+
+    @staticmethod
+    def _feature_flags(context: ToolExecutionContext) -> FeatureFlags:
+        explicit = context.extra.get("feature_flags")
+        if isinstance(explicit, FeatureFlags):
+            return explicit
+        if isinstance(explicit, dict):
+            return FeatureFlags.from_mapping(explicit, environ={})
+        runtime_config = getattr(context.runtime, "config", None)
+        flags = getattr(runtime_config, "feature_flags", None)
+        if isinstance(flags, FeatureFlags):
+            return flags
+        return get_config().feature_flags
 
     def _ui_agent(self, context: ToolExecutionContext) -> Any:
         return context.agent_pool.get("ui_automation")
@@ -343,6 +624,56 @@ class ToolExecutor:
             request, {"success": True, "final_x": x, "final_y": y}, confidence=0.9
         )
 
+    async def _computer_execute(
+        self,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        ui = self._ui_agent(context)
+        if not ui:
+            return self.normalizer.failure(
+                request, "tool.dependency_missing", "UIAutomationAgent not available"
+            )
+        actions = request.input.get("actions")
+        if not isinstance(actions, list) or not actions:
+            return self.normalizer.failure(
+                request, "computer.actions_required", "Computer execution requires actions"
+            )
+        normalized_actions: list[dict[str, Any]] = []
+        expected = request.metadata.get("expected_outcome")
+        for raw in actions:
+            if not isinstance(raw, dict):
+                return self.normalizer.failure(
+                    request, "computer.action_invalid", "Each computer action must be an object"
+                )
+            action = dict(raw)
+            if expected and "expected_outcome" not in action:
+                action["expected_outcome"] = expected
+            action_type = str(action.get("action") or "").lower()
+            if action_type in {
+                "click",
+                "double_click",
+                "right_click",
+                "move",
+                "scroll",
+                "drag",
+            }:
+                if action_type == "drag":
+                    for point in action.get("path") or []:
+                        if isinstance(point, (list, tuple)) and len(point) >= 2:
+                            self.input_monitor.record_agent_mouse_action(
+                                int(point[0]), int(point[1])
+                            )
+                elif action.get("x") is not None and action.get("y") is not None:
+                    self.input_monitor.record_agent_mouse_action(
+                        int(action["x"]), int(action["y"])
+                    )
+            elif action_type in {"type", "key", "hotkey", "press"}:
+                self.input_monitor.record_agent_keyboard_action()
+            normalized_actions.append(action)
+        result = await ui.execute_computer_actions(normalized_actions)
+        return self.normalizer.from_action_result(request, result)
+
     async def _mouse_click(self, request: ToolRequest, context: ToolExecutionContext) -> ToolResult:
         ui = self._ui_agent(context)
         if not ui:
@@ -360,8 +691,54 @@ class ToolExecutor:
             click_type = "double"
         else:
             click_type = str(request.input.get("button", "left"))
-        step = {"target": request.input, "click_type": click_type}
+        step = {
+            "target": request.input.get("target") or request.input,
+            "click_type": click_type,
+            "expected_outcome": request.metadata.get("expected_outcome"),
+        }
         action = await ui.click(step)
+        return self.normalizer.from_action_result(request, action)
+
+    async def _mouse_drag(
+        self, request: ToolRequest, context: ToolExecutionContext
+    ) -> ToolResult:
+        ui = self._ui_agent(context)
+        if not ui:
+            return self.normalizer.failure(
+                request, "tool.dependency_missing", "UIAutomationAgent not available"
+            )
+        path = request.input.get("path")
+        if not path:
+            path = [
+                [request.input.get("x1"), request.input.get("y1")],
+                [request.input.get("x2"), request.input.get("y2")],
+            ]
+        if (
+            not isinstance(path, list)
+            or len(path) < 2
+            or any(
+                not isinstance(point, (list, tuple))
+                or len(point) < 2
+                or point[0] is None
+                or point[1] is None
+                for point in path
+            )
+        ):
+            return self.normalizer.failure(
+                request, "mouse.drag_path_invalid", "Drag requires at least two x/y points"
+            )
+        for point in path:
+            self.input_monitor.record_agent_mouse_action(int(point[0]), int(point[1]))
+        action = await ui.execute_computer_actions(
+            [
+                {
+                    "action": "drag",
+                    "path": [[int(point[0]), int(point[1])] for point in path],
+                    "duration_ms": int(request.input.get("duration_ms", 500)),
+                    "expected_outcome": request.metadata.get("expected_outcome"),
+                }
+            ]
+        )
         return self.normalizer.from_action_result(request, action)
 
     async def _mouse_scroll(
@@ -377,6 +754,7 @@ class ToolExecutor:
             "y": request.input.get("y"),
             "direction": request.input.get("direction", "down"),
             "amount": request.input.get("amount", 3),
+            "expected_outcome": request.metadata.get("expected_outcome"),
         }
         action = await ui.scroll(step)
         return self.normalizer.from_action_result(request, action)
@@ -389,8 +767,13 @@ class ToolExecutor:
             return self.normalizer.failure(
                 request, "tool.dependency_missing", "UIAutomationAgent not available"
             )
+        self.input_monitor.record_agent_keyboard_action()
         action = await ui.type_text(
-            {"text": request.input.get("text", ""), "target": request.input.get("target")}
+            {
+                "text": request.input.get("text", ""),
+                "target": request.input.get("target"),
+                "expected_outcome": request.metadata.get("expected_outcome"),
+            }
         )
         return self.normalizer.from_action_result(request, action)
 
@@ -402,8 +785,12 @@ class ToolExecutor:
             return self.normalizer.failure(
                 request, "tool.dependency_missing", "UIAutomationAgent not available"
             )
+        self.input_monitor.record_agent_keyboard_action()
         action = await ui.press_key(
-            {"keys": request.input.get("keys") or request.input.get("key", "")}
+            {
+                "keys": request.input.get("keys") or request.input.get("key", ""),
+                "expected_outcome": request.metadata.get("expected_outcome"),
+            }
         )
         return self.normalizer.from_action_result(request, action)
 
@@ -506,8 +893,14 @@ class ToolExecutor:
     async def _shell_run(self, request: ToolRequest, context: ToolExecutionContext) -> ToolResult:
         command = str(request.input.get("command", ""))
         timeout_ms = int(request.input.get("timeout_ms") or 15_000)
-        if not command.strip():
-            return self.normalizer.failure(request, "shell.empty", "Shell command is empty")
+        cwd = request.input.get("cwd")
+        decision = self.security_policy.validate_shell(command, cwd)
+        if not decision.allowed:
+            return self.normalizer.failure(
+                request,
+                decision.code or "shell.blocked",
+                decision.reason or "Shell command blocked by policy",
+            )
 
         # Security check via the SecurityAgent in the agent pool
         security_agent = context.agent_pool.get("security")
@@ -520,7 +913,12 @@ class ToolExecutor:
                     f"Security agent blocked command: {reason}",
                 )
 
-        return await self._run_shell_string(request, command, timeout_ms=timeout_ms)
+        return await self._run_shell_string(
+            request,
+            command,
+            cwd=Path(str(cwd)),
+            timeout_ms=timeout_ms,
+        )
 
     async def _filesystem_read(
         self, request: ToolRequest, context: ToolExecutionContext
@@ -715,43 +1113,34 @@ class ToolExecutor:
     }
 
     async def _run_shell_string(
-        self, request: ToolRequest, command: str, *, timeout_ms: int
+        self,
+        request: ToolRequest,
+        command: str,
+        *,
+        cwd: Path,
+        timeout_ms: int,
     ) -> ToolResult:
         import structlog
 
         log = structlog.get_logger(__name__)
 
-        # Security: reject dangerous commands
-        cmd_lower = command.lower().strip()
-        for dangerous in self.DANGEROUS_COMMANDS:
-            if dangerous in cmd_lower:
-                log.warning("shell.blocked_dangerous_command", command=command[:120])
-                return self.normalizer.failure(
-                    request,
-                    "shell.blocked",
-                    f"Command blocked: contains dangerous pattern '{dangerous}'",
-                )
-
-        # Security: cap command length
-        if len(command) > 4096:
-            return self.normalizer.failure(
-                request, "shell.too_long", "Command exceeds 4096 character limit"
-            )
-
         try:
-            proc = await asyncio.to_thread(  # noqa: S604 — gated shell sandbox (length-capped + safety-supervised)
+            proc = await asyncio.to_thread(
                 subprocess.run,
                 command,
                 shell=True,
                 capture_output=True,
                 text=True,
+                cwd=str(cwd),
+                env=self.security_policy.scrub_environment(),
                 timeout=max(1, min(timeout_ms / 1000.0, 60.0)),
             )
             output = {
                 "success": proc.returncode == 0,
-                "stdout": proc.stdout.strip()[:50000],
-                "stderr": proc.stderr.strip()[:50000],
+                "stdout": self.security_policy.redact_output(proc.stdout.strip()),
+                "stderr": self.security_policy.redact_output(proc.stderr.strip()),
                 "returncode": proc.returncode,
+                "cwd": str(cwd),
             }
             if proc.returncode != 0:
                 return self.normalizer.failure(

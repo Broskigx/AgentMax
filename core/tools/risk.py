@@ -24,6 +24,37 @@ class ToolRiskAnalyzer:
         r"\btakeown\b",
         r"\bcipher\s+/w\b",
     )
+    _SENSITIVE_TERMS = (
+        "password",
+        "credential",
+        "login",
+        "sign in",
+        "payment",
+        "checkout",
+        "send message",
+        "submit",
+        "confirm",
+        "delete",
+        "token",
+        "secret",
+    )
+
+    @staticmethod
+    def _payload_text(payload: dict[str, Any]) -> str:
+        values: list[str] = []
+
+        def collect(value: Any) -> None:
+            if isinstance(value, dict):
+                for nested in value.values():
+                    collect(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    collect(nested)
+            elif isinstance(value, str):
+                values.append(value)
+
+        collect(payload)
+        return " ".join(values).lower()
 
     def analyze(self, definition: ToolDefinition, payload: dict[str, Any]) -> dict[str, Any]:
         score = {
@@ -57,6 +88,11 @@ class ToolRiskAnalyzer:
                 score = max(score, 0.65)
                 reasons.append("large_text_injection")
 
+        payload_text = self._payload_text(payload)
+        if any(term in payload_text for term in self._SENSITIVE_TERMS):
+            score = max(score, 0.75)
+            reasons.append("sensitive_surface")
+
         level = "low"
         if score >= 0.90:
             level = "critical"
@@ -77,3 +113,48 @@ class ToolRiskAnalyzer:
         if analysis["score"] >= 0.97:
             return "critical_risk_blocked"
         return None
+
+    def verification_policy(
+        self,
+        definition: ToolDefinition,
+        payload: dict[str, Any],
+        *,
+        confidence: float,
+    ) -> dict[str, Any]:
+        confidence = max(0.0, min(1.0, float(confidence)))
+        text = self._payload_text(payload)
+        sensitive = definition.category in {"shell", "filesystem"} or any(
+            term in text for term in self._SENSITIVE_TERMS
+        )
+        text_target = bool(payload.get("target"))
+        if definition.id == "computer.execute":
+            actions = payload.get("actions", [])
+            text_target = any(
+                str((action or {}).get("action") or "").lower()
+                in {"type", "key", "hotkey", "press"}
+                for action in actions
+                if isinstance(action, dict)
+            )
+        static_risk = definition.risk_level in {
+            ToolRiskLevel.MEDIUM,
+            ToolRiskLevel.HIGH,
+            ToolRiskLevel.CRITICAL,
+        }
+
+        if confidence < 0.50:
+            action = "block"
+        elif confidence < 0.70:
+            action = "reobserve"
+        elif confidence < 0.90:
+            action = "pre_verify"
+        elif sensitive or text_target or static_risk:
+            action = "pre_verify"
+        else:
+            action = "normal"
+
+        return {
+            "action": action,
+            "confidence": confidence,
+            "sensitive": sensitive,
+            "text_target": text_target,
+        }

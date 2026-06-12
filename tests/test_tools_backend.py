@@ -5,6 +5,7 @@ import json
 import pytest
 
 from core.cli import main as AGENTMAX_cli
+from core.feature_flags import FeatureFlags
 from core.tools import (
     SafeResumeManager,
     ToolExecutionContext,
@@ -132,7 +133,10 @@ async def test_executor_blocks_high_risk_shell_without_confirmation() -> None:
     executor = ToolExecutor(ToolRegistry.default())
     result = await executor.execute(
         ToolRequest(tool_id="shell.run", input={"command": "echo hi", "timeout_ms": 1000}),
-        ToolExecutionContext(user_idle=True, extra={"computer_control_granted": True}),
+        ToolExecutionContext(
+            user_idle=True,
+            extra={"feature_flags": FeatureFlags(terminal=True)},
+        ),
     )
     assert not result.success
     assert result.error_code == "tool.confirmation_required"

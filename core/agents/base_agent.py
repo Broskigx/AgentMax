@@ -60,9 +60,11 @@ class ActionResult:
     success: bool
     data: Any = None
     error: str | None = None
+    error_code: str | None = None
     confidence: float = 1.0
     reasoning: str = ""
     duration_ms: float = 0.0
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass

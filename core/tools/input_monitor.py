@@ -10,6 +10,7 @@ for a full quiet window.
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -35,6 +36,14 @@ def _default_cursor_provider() -> tuple[int, int]:
 
 
 def _default_keyboard_provider() -> bool:
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            get_async_key_state = ctypes.windll.user32.GetAsyncKeyState
+            return any(get_async_key_state(code) & 0x8000 for code in range(8, 255))
+        except Exception:
+            return False
     return False
 
 
@@ -112,12 +121,18 @@ class KeyboardActivityDetector:
         self.idle_after_sec = idle_after_sec
         self.clock = clock
         self.last_activity_at = clock()
+        self._agent_input_until = 0.0
 
     def sample(self) -> bool:
         active = bool(self.keyboard_provider())
+        if active and self.clock() <= self._agent_input_until:
+            return False
         if active:
             self.last_activity_at = self.clock()
         return active
+
+    def record_agent_input(self, ttl_sec: float = 0.75) -> None:
+        self._agent_input_until = max(self._agent_input_until, self.clock() + ttl_sec)
 
     def is_idle(self) -> bool:
         return (self.clock() - self.last_activity_at) >= self.idle_after_sec
@@ -199,6 +214,8 @@ class UserInputMonitor:
         poll_interval_sec: float = 0.075,
         idle_after_sec: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
+        bus: object | None = None,
+        authorization_validator: Callable[[str | None], bool] | None = None,
     ) -> None:
         self.mouse = MouseIdleDetector(
             cursor_provider,
@@ -218,6 +235,20 @@ class UserInputMonitor:
         self._task: asyncio.Task[None] | None = None
         self._active_task_id: str | None = None
         self._running = False
+        self._bus = bus
+        self._authorization_validator = authorization_validator or (lambda _task_id: True)
+        self._blocked_event_sent = False
+
+    def configure(
+        self,
+        *,
+        bus: object | None = None,
+        authorization_validator: Callable[[str | None], bool] | None = None,
+    ) -> None:
+        if bus is not None:
+            self._bus = bus
+        if authorization_validator is not None:
+            self._authorization_validator = authorization_validator
 
     @property
     def status(self) -> dict[str, object]:
@@ -233,6 +264,7 @@ class UserInputMonitor:
     def start_task(self, task_id: str | None) -> None:
         self._active_task_id = task_id
         self._running = True
+        self._blocked_event_sent = False
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._loop(), name="tool-user-input-monitor")
 
@@ -246,11 +278,21 @@ class UserInputMonitor:
     def record_agent_mouse_action(self, x: int, y: int) -> None:
         self.mouse.record_agent_move(x, y)
 
+    def record_agent_keyboard_action(self) -> None:
+        self.keyboard.record_agent_input()
+
     async def wait_until_safe(self) -> None:
         while self.pause_controller.paused:
             can_resume, _reason = self.resume_manager.can_resume()
             if can_resume:
+                if not self._authorization_validator(self._active_task_id):
+                    if not self._blocked_event_sent:
+                        await self._emit("input.agent_blocked", "authorization_expired")
+                        self._blocked_event_sent = True
+                    raise PermissionError("Task permission expired while automation was paused")
                 self.pause_controller.resume()
+                self._blocked_event_sent = False
+                await self._emit("input.agent_resumed", "quiet_window_and_authorized")
                 return
             await asyncio.sleep(self.poll_interval_sec)
         await self.pause_controller.wait_if_paused()
@@ -261,10 +303,35 @@ class UserInputMonitor:
                 override, reason = self.override_detector.sample()
                 if override and not self.pause_controller.paused:
                     self.pause_controller.pause(self._active_task_id, reason or "user_input")
+                    self._blocked_event_sent = False
+                    await self._emit("input.user_interrupted", reason or "user_input")
+                    await self._emit("input.agent_paused", reason or "user_input")
                 elif self.pause_controller.paused:
                     can_resume, _resume_reason = self.resume_manager.can_resume()
                     if can_resume:
-                        self.pause_controller.resume()
+                        if self._authorization_validator(self._active_task_id):
+                            self.pause_controller.resume()
+                            self._blocked_event_sent = False
+                            await self._emit(
+                                "input.agent_resumed", "quiet_window_and_authorized"
+                            )
+                        elif not self._blocked_event_sent:
+                            await self._emit("input.agent_blocked", "authorization_expired")
+                            self._blocked_event_sent = True
                 await asyncio.sleep(self.poll_interval_sec)
         except asyncio.CancelledError:
             pass
+
+    async def _emit(self, topic: str, reason: str) -> None:
+        if not self._bus or not hasattr(self._bus, "publish"):
+            return
+        from core.event_bus import Event
+
+        await self._bus.publish(
+            Event(
+                topic=topic,
+                payload={"task_id": self._active_task_id, "reason": reason},
+                source="user_input_monitor",
+                priority=1,
+            )
+        )

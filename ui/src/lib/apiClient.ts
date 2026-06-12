@@ -65,7 +65,10 @@ export async function refreshBackendStatus(): Promise<{
     }
 
     let banner: string | null = null;
-    if (ipcAuthEnabled) {
+    if (healthJson?.limited) {
+      const reason = healthJson?.fallback_reason ? `: ${healthJson.fallback_reason}` : '';
+      banner = `MODO LIMITADO (${healthJson?.runtime_mode || 'fallback'})${reason}`;
+    } else if (ipcAuthEnabled) {
       banner = 'IPC auth ON — local API requires X-AgentMax-Token';
     } else if (!modelConnected) {
       banner = 'Backend online — no external model connected (local beta chat still works)';

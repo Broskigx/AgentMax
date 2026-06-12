@@ -370,11 +370,31 @@ impl DesktopAutomationService {
         self.permissions.clone()
     }
 
-    pub fn resume(&mut self) -> InterventionStatus {
+    pub fn resume(&mut self) -> Result<InterventionStatus, String> {
+        if !self.permissions.automation_enabled
+            || (!self.permissions.mouse_control_enabled
+                && !self.permissions.keyboard_control_enabled)
+        {
+            return Err(
+                "Cannot resume automation without an active mouse or keyboard permission"
+                    .to_string(),
+            );
+        }
+        let last_input = native_input_monitor_status()
+            .last_physical_input_at
+            .or(self.runtime.last_user_intervention_at);
+        if let Some(last_input_at) = last_input {
+            let quiet_ms = now_millis().saturating_sub(last_input_at);
+            if quiet_ms < 2_000 {
+                return Err(format!(
+                    "Cannot resume until user input has been quiet for 2000ms (quiet={quiet_ms}ms)"
+                ));
+            }
+        }
         self.runtime.paused = false;
         self.runtime.pause_reason = None;
         self.runtime.expected_mouse = get_mouse_position_native().ok();
-        self.intervention_status()
+        Ok(self.intervention_status())
     }
 
     pub fn pause(&mut self, reason: String) -> InterventionStatus {

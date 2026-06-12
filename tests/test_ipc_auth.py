@@ -26,7 +26,7 @@ def test_rest_auth_rejects_missing_or_invalid_token():
 def test_rest_auth_accepts_token_and_health_exemptions():
     ipc_auth.check_rest_request(
         path="/api/status",
-        headers={ipc_auth.AUTH_HEADER: "secret-token"},
+        headers={"X-Agentmax-Token": "secret-token"},
         enabled=True,
         expected_token="secret-token",
     )
@@ -37,6 +37,15 @@ def test_rest_auth_accepts_token_and_health_exemptions():
             enabled=True,
             expected_token="secret-token",
         )
+
+
+def test_environment_token_is_persisted_for_desktop_clients(tmp_path, monkeypatch):
+    token_path = tmp_path / "ipc_token"
+    monkeypatch.setenv(ipc_auth.TOKEN_ENV_VAR, "environment-token")
+    monkeypatch.setattr(ipc_auth, "token_file_path", lambda: token_path)
+
+    assert ipc_auth.ensure_token() == "environment-token"
+    assert token_path.read_text(encoding="utf-8") == "environment-token"
 
 
 def test_auth_flag_uses_secure_config_default(monkeypatch):

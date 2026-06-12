@@ -44,6 +44,12 @@ interface PromptInputBoxProps {
 
 const MAX_ATTACHMENTS = 4;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MODE_BUTTON_BASE =
+  'flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold transition duration-200';
+const MODE_BUTTON_ACTIVE =
+  'border-cyan-300/55 bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-500 text-white shadow-[0_5px_18px_rgba(37,99,235,0.32),inset_0_1px_0_rgba(255,255,255,0.18)] hover:from-blue-600 hover:via-blue-500 hover:to-cyan-400';
+const MODE_BUTTON_INACTIVE =
+  'border-blue-300/30 bg-gradient-to-br from-blue-800/90 via-blue-700/80 to-cyan-700/70 text-blue-100 shadow-[0_4px_14px_rgba(37,99,235,0.18)] hover:border-cyan-200/60 hover:from-blue-700 hover:via-blue-600 hover:to-cyan-500 hover:text-white';
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -281,7 +287,7 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
                   onClick={() => uploadInputRef.current?.click()}
                   disabled={isDisabled || !supportsVision}
                   aria-label={supportsVision ? 'Adjuntar imágenes' : 'Visión no disponible'}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-transparent text-zinc-500 transition hover:border-white/[0.07] hover:bg-white/[0.05] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-35"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-blue-300/35 bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-500 text-white shadow-[0_5px_16px_rgba(37,99,235,0.28)] transition duration-200 hover:border-cyan-200/70 hover:from-blue-600 hover:via-blue-500 hover:to-cyan-400 hover:shadow-[0_7px_20px_rgba(37,99,235,0.4)] disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <Paperclip size={17} />
                 </button>
@@ -306,10 +312,8 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
                   onClick={() => setMode('chat')}
                   aria-pressed={mode === 'chat'}
                   className={cn(
-                    'flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold transition',
-                    mode === 'chat'
-                      ? 'border-orange-400/25 bg-orange-400/10 text-orange-300'
-                      : 'border-transparent text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200',
+                    MODE_BUTTON_BASE,
+                    mode === 'chat' ? MODE_BUTTON_ACTIVE : MODE_BUTTON_INACTIVE,
                   )}
                 >
                   <ImagePlus size={15} />
@@ -323,10 +327,8 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
                   onClick={() => setMode((current) => current === 'think' ? 'chat' : 'think')}
                   aria-pressed={mode === 'think'}
                   className={cn(
-                    'flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold transition',
-                    mode === 'think'
-                      ? 'border-violet-400/30 bg-violet-400/10 text-violet-300'
-                      : 'border-transparent text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200',
+                    MODE_BUTTON_BASE,
+                    mode === 'think' ? MODE_BUTTON_ACTIVE : MODE_BUTTON_INACTIVE,
                   )}
                 >
                   <BrainCog size={15} />
@@ -340,10 +342,8 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
                   onClick={() => setMode((current) => current === 'computer' ? 'chat' : 'computer')}
                   aria-pressed={mode === 'computer'}
                   className={cn(
-                    'flex h-9 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold transition',
-                    mode === 'computer'
-                      ? 'border-sky-400/30 bg-sky-400/10 text-sky-300'
-                      : 'border-transparent text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200',
+                    MODE_BUTTON_BASE,
+                    mode === 'computer' ? MODE_BUTTON_ACTIVE : MODE_BUTTON_INACTIVE,
                   )}
                 >
                   <MonitorUp size={15} />
@@ -366,8 +366,8 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
                   isLoading
                     ? 'border-red-400/25 bg-red-400/10 text-red-300 hover:bg-red-400/15'
                     : canSend
-                      ? 'border-orange-300/35 bg-orange-500 text-white shadow-[0_5px_18px_rgba(249,115,22,0.28)] hover:bg-orange-400'
-                      : 'border-white/[0.06] bg-white/[0.03] text-zinc-700',
+                      ? 'border-cyan-300/60 bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 text-white shadow-[0_6px_22px_rgba(37,99,235,0.42)] hover:from-blue-500 hover:via-blue-400 hover:to-cyan-300 hover:shadow-[0_8px_26px_rgba(37,99,235,0.5)]'
+                      : 'border-blue-500/10 bg-gradient-to-br from-blue-950/35 to-cyan-950/25 text-blue-900',
                 )}
               >
                 {isLoading ? <Square size={14} fill="currentColor" /> : <ArrowUp size={17} />}

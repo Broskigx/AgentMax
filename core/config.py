@@ -6,6 +6,8 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.feature_flags import FeatureFlags, load_config_profile
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -120,7 +122,7 @@ class Settings(BaseSettings):
     log_structured: bool = Field(default=True, validation_alias="LOG_STRUCTURED")
 
     # === Telemetry ===
-    enable_telemetry: bool = Field(default=True, validation_alias="ENABLE_TELEMETRY")
+    enable_telemetry: bool = Field(default=False, validation_alias="ENABLE_TELEMETRY")
     telemetry_endpoint: str | None = Field(default=None, validation_alias="TELEMETRY_ENDPOINT")
 
     # === Feature Flags ===
@@ -356,8 +358,8 @@ class InputConfig(BaseSettings):
     )
     typing_wpm: float = Field(default=420.0, validation_alias="AGENTMAX_TYPING_WPM")
     typing_variance: float = Field(default=0.08, validation_alias="AGENTMAX_TYPING_VARIANCE")
-    pre_click_verify: bool = Field(default=False, validation_alias="AGENTMAX_PRE_CLICK_VERIFY")
-    post_click_verify: bool = Field(default=False, validation_alias="AGENTMAX_POST_CLICK_VERIFY")
+    pre_click_verify: bool = Field(default=True, validation_alias="AGENTMAX_PRE_CLICK_VERIFY")
+    post_click_verify: bool = Field(default=True, validation_alias="AGENTMAX_POST_CLICK_VERIFY")
 
 
 class VisionConfig(BaseSettings):
@@ -390,6 +392,9 @@ class MemoryConfig(BaseSettings):
         validation_alias="AGENTMAX_VISUAL_MEM_PATH",
     )
     max_visual_templates: int = Field(default=500, validation_alias="AGENTMAX_MAX_VISUAL_TEMPLATES")
+    store_visual_images: bool = Field(
+        default=False, validation_alias="AGENTMAX_STORE_VISUAL_IMAGES"
+    )
 
 
 class SecurityConfig(BaseSettings):
@@ -427,11 +432,12 @@ class AgentMaxConfig(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     debug: bool = Field(default=False, validation_alias="DEBUG")
     version: str = Field(default="1.0.0", validation_alias="APP_VERSION")
-    telemetry_enabled: bool = Field(default=True, validation_alias="ENABLE_TELEMETRY")
+    telemetry_enabled: bool = Field(default=False, validation_alias="ENABLE_TELEMETRY")
     update_channel: str = Field(default="stable", validation_alias="AGENTMAX_UPDATE_CHANNEL")
     # AgentMax observability layer (thinking-strip + token logs + bus events).
     # ON by default; set AGENTMAX_OBSERVABILITY=0 to fall back to
@@ -448,6 +454,8 @@ class AgentMaxConfig(BaseSettings):
         default=True,
         validation_alias="AGENTMAX_IPC_AUTH",
     )
+    feature_flags: FeatureFlags = Field(default_factory=FeatureFlags)
+    config_errors: list[str] = Field(default_factory=list)
 
     # Nested sections -- each reads from env vars with its own prefix
     license: LicenseConfig = Field(default_factory=LicenseConfig)
@@ -485,12 +493,34 @@ def get_config() -> AgentMaxConfig:
     """
     global _config
     if _config is None:
-        _config = AgentMaxConfig()
+        _config = _build_runtime_config()
     return _config
 
 
 def reload_config() -> AgentMaxConfig:
     """Force reload config from environment (e.g. after .env changes)."""
     global _config
-    _config = AgentMaxConfig()
+    _config = _build_runtime_config()
     return _config
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    if name not in os.environ:
+        return default
+    return os.environ[name].strip().lower() in {"1", "true", "yes", "on", "si"}
+
+
+def _build_runtime_config() -> AgentMaxConfig:
+    profile = load_config_profile()
+    return AgentMaxConfig(
+        telemetry_enabled=_env_bool(
+            "ENABLE_TELEMETRY",
+            bool(profile.data.get("telemetry_enabled", False)),
+        ),
+        ipc_auth_enabled=_env_bool(
+            "AGENTMAX_IPC_AUTH",
+            bool(profile.data.get("ipc_auth_enabled", True)),
+        ),
+        feature_flags=profile.feature_flags,
+        config_errors=profile.errors,
+    )

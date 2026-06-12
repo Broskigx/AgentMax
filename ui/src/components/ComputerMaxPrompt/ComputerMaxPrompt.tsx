@@ -7,6 +7,7 @@ export function ComputerMaxPrompt() {
   const { computerControlRequest, approveComputerControl, denyComputerControl } = useAgentStore();
 
   if (!computerControlRequest) return null;
+  const permissions = computerControlRequest.requestedPermissions.join(' + ');
 
   return (
     <div className="computermax-prompt__backdrop" role="dialog" aria-modal="true" aria-labelledby="computermax-title">
@@ -27,8 +28,8 @@ export function ComputerMaxPrompt() {
           <div className="computermax-prompt__warning">
             <TriangleAlert size={16} strokeWidth={2} />
             <span>
-              ComputerMax podrá mover el mouse, escribir texto, capturar la pantalla
-              y ejecutar herramientas del sistema bajo tu supervisión.
+              Esta tarea solicita unicamente: <strong>{permissions}</strong>.
+              El permiso expira al terminar y se restaura el estado anterior.
             </span>
           </div>
 
@@ -61,7 +62,7 @@ export function ComputerMaxPrompt() {
             onClick={approveComputerControl}
             autoFocus
           >
-            Aprobar ComputerMax
+            Aprobar {permissions}
           </button>
         </footer>
       </div>

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -20,6 +19,7 @@ from core.agents.base_agent import (
 )
 from core.ai.thinking_engine import get_thinking_engine
 from core.event_bus import Event
+from core.htlgg import DecisionRecord, HtlggEnvelope, RiskLevel
 from core.tools.executor import ToolExecutor
 from core.tools.logger import ToolLogger
 from core.tools.registry import ToolRegistry
@@ -71,7 +71,7 @@ class TaskRecord:
 
 # Minimum vision-match confidence below which the agent pauses and asks the
 # user to confirm the target before acting on it.
-CONFIDENCE_THRESHOLD = 0.60
+CONFIDENCE_THRESHOLD = 0.90
 
 
 class SupervisorAgent(BaseAgent):
@@ -332,6 +332,8 @@ class SupervisorAgent(BaseAgent):
 
             self._pixel_analyzer = PixelAnalyzer()
         pixel_analyzer = self._pixel_analyzer
+        held_ui_lock = False
+        self._grant_explicit_task_permissions(record)
 
         # App-fencing: extract scope from plan metadata
         scope_apps: list[str] = (
@@ -360,10 +362,7 @@ class SupervisorAgent(BaseAgent):
                 )
                 step = decision.normalized_step
                 step["_task_id"] = record.request.id
-                step["_computer_control_granted"] = bool(
-                    record.request.options.get("autonomous")
-                    or record.request.options.get("computer_control_granted")
-                )
+                step["_session_id"] = record.request.options.get("session_id")
                 if not decision.allowed:
                     result = ActionResult(
                         success=False,
@@ -379,33 +378,37 @@ class SupervisorAgent(BaseAgent):
                     )
                     continue
 
+                await self._emit_htlgg_decision(record, step, confirmed)
+
+                physical_action = self._is_physical_step(step)
+                if physical_action:
+                    await self._ui_lock.acquire()
+                    held_ui_lock = True
+
                 # Reactive Vision: force a scan before action if the last one is stale
                 await self.ctx.capture.capture()
 
-                # UI Exclusivity: acquire lock for input actions
-                action_lock = None
-                if step.get("type") in ("click", "type", "key", "scroll"):
-                    action_lock = self._ui_lock
-
-                async with action_lock or contextlib.nullcontext():
-                    await self.emit(
-                        "task.step_started",
-                        {
-                            "task_id": record.request.id,
-                            "step": i + 1,
-                            "total": len(record.plan.steps),
-                            "description": step.get("description", ""),
-                        },
-                    )
+                await self.emit(
+                    "task.step_started",
+                    {
+                        "task_id": record.request.id,
+                        "step": i + 1,
+                        "total": len(record.plan.steps),
+                        "description": step.get("description", ""),
+                    },
+                )
 
                 # App-fencing: block if focused window is out of scope
                 if security_agent and scope_apps:
-                    if step.get("type") in ("click", "type", "key", "scroll"):
+                    if physical_action:
                         if not await security_agent.check_action_window():
                             record.reasoning_trace.append(
                                 f"Step {i + 1} skipped -- focused window outside task scope."
                             )
                             await asyncio.sleep(0.5)
+                            if held_ui_lock:
+                                self._release_ui_lock()
+                                held_ui_lock = False
                             continue
 
                 # HUD: announce the action the agent is about to take
@@ -472,9 +475,7 @@ class SupervisorAgent(BaseAgent):
                         error=result.error,
                     ):
                         fallback["_task_id"] = record.request.id
-                        fallback["_computer_control_granted"] = step.get(
-                            "_computer_control_granted", False
-                        )
+                        fallback["_session_id"] = step.get("_session_id")
                         fallback_result = await self._dispatch_step(fallback, ui_agent)
                         record.results.append(fallback_result)
                         self._thinking.observe_step_result(
@@ -483,15 +484,25 @@ class SupervisorAgent(BaseAgent):
                             success=fallback_result.success,
                             error=fallback_result.error,
                         )
-                        if fallback_result.success:
+                        if fallback_result.success and fallback.get(
+                            "equivalent_to_original", False
+                        ):
                             result = fallback_result
                             record.reasoning_trace.append(
                                 f"Step {i + 1} recovered with fallback {fallback.get('type')}"
                             )
                             break
+                        if fallback_result.success:
+                            record.reasoning_trace.append(
+                                f"Step {i + 1} fallback {fallback.get('type')} "
+                                "captured diagnostic evidence; original action remains failed."
+                            )
                     if result.success:
                         await self.emit("hud.clear", {})
                         await asyncio.sleep(0.05)
+                        if held_ui_lock:
+                            self._release_ui_lock()
+                            held_ui_lock = False
                         continue
                     if step.get("critical", False):
                         raise RuntimeError(f"Critical step {i + 1} failed: {result.error}")
@@ -501,8 +512,14 @@ class SupervisorAgent(BaseAgent):
                 await self.emit("hud.clear", {})
 
                 await asyncio.sleep(0.05)
+                if held_ui_lock:
+                    self._release_ui_lock()
+                    held_ui_lock = False
 
         finally:
+            if held_ui_lock:
+                self._release_ui_lock()
+            self.ctx.security.revoke_scope(task_id=record.request.id)
             # Always lift app scope restrictions when phase ends
             if security_agent:
                 security_agent.clear_task_scope()
@@ -565,6 +582,7 @@ class SupervisorAgent(BaseAgent):
             success=tool_result.success,
             data=tool_result.output,
             error=tool_result.error,
+            error_code=tool_result.error_code,
             confidence=tool_result.confidence,
             reasoning=(
                 f"Tool {tool_result.tool} "
@@ -608,11 +626,16 @@ class SupervisorAgent(BaseAgent):
     async def _phase_validate(self, record: TaskRecord) -> None:
         record.status = TaskStatus.VALIDATING
         record.reasoning_trace.append("Validating task outcome...")
+        failed_results = [result for result in record.results if not result.success]
+        if failed_results:
+            latest = failed_results[-1]
+            code = latest.error_code or "tool.action_failed"
+            raise RuntimeError(f"Task contains a failed action ({code}): {latest.error}")
         validation_agent = self._get_agent("validation")
         if validation_agent and record.plan:
             ok = await validation_agent.validate_task(record)
             if not ok:
-                record.reasoning_trace.append("Validation failed -- retrying last step...")
+                raise RuntimeError("Task validation failed")
 
     async def _phase_memorize(self, record: TaskRecord) -> None:
         self._thinking.mark_memory_updated(record.thinking_state)
@@ -672,8 +695,34 @@ class SupervisorAgent(BaseAgent):
         target = step.get("target", "")
         el = await vision_agent.find_element(target)
 
-        if el is None or el.confidence >= CONFIDENCE_THRESHOLD:
-            return step  # confident enough -- proceed without asking
+        if el is None:
+            await self.emit(
+                "vision.element_uncertain",
+                {
+                    "task_id": record.request.id,
+                    "target": target,
+                    "bounds": None,
+                    "confidence": 0.0,
+                    "question": f"Cannot safely locate '{target}'.",
+                },
+                priority=1,
+            )
+            return {**step, "confidence": 0.0}
+
+        step = {
+            **step,
+            "confidence": el.confidence,
+            "bounds": list(el.bounds),
+            "element_id": el.id,
+            "element_source": el.source,
+        }
+        if el.confidence >= CONFIDENCE_THRESHOLD:
+            return step
+        if el.confidence >= 0.50:
+            record.reasoning_trace.append(
+                f"Vision confidence {el.confidence:.2f}; executor will pre-verify or re-observe."
+            )
+            return step
 
         log.warning("supervisor.learning_mode_triggered", target=target, confidence=el.confidence)
 
@@ -712,14 +761,20 @@ class SupervisorAgent(BaseAgent):
             record.reasoning_trace.append(
                 f"Learning: user confirmed '{target}' (conf={el.confidence:.2f}) -- saving template."
             )
-            step = {**step, "bounds": list(el.bounds), "_confirmed": True}
+            step = {**step, "bounds": list(el.bounds), "_confirmed": True, "confidence": 1.0}
 
         elif isinstance(confirmed, list) and len(confirmed) == 4:
             # User provided corrected bounds
             record.reasoning_trace.append(
                 f"Learning: user corrected '{target}' bounds -- saving corrected template."
             )
-            step = {**step, "bounds": confirmed, "_confirmed": True, "_corrected": True}
+            step = {
+                **step,
+                "bounds": confirmed,
+                "_confirmed": True,
+                "_corrected": True,
+                "confidence": 1.0,
+            }
 
         return step
 
@@ -858,14 +913,32 @@ class SupervisorAgent(BaseAgent):
                     ui_agent,
                 )
                 await asyncio.sleep(0.2)
+                frame_scrolled = await self._capture_frame()
                 healed2 = await self._dispatch_step(step, ui_agent)
                 record.reasoning_trace.append("Self-heal: scroll+retry executed.")
-                return healed2
+                if healed2.success and frame_scrolled is not None:
+                    await asyncio.sleep(SETTLE_S)
+                    frame_healed = await self._capture_frame()
+                    if frame_healed is not None:
+                        pixel_analyzer.process_frame(frame_scrolled)
+                        diff3 = pixel_analyzer.process_frame(frame_healed)
+                        if diff3 and diff3.changed_ratio >= VISUAL_EFFECT_THRESHOLD:
+                            record.reasoning_trace.append(
+                                "Self-heal: scroll+retry confirmed by visual diff."
+                            )
+                            return healed2
             except Exception:
                 pass
 
         record.reasoning_trace.append("Self-heal: could not confirm visual effect after retries.")
-        return result
+        return ActionResult(
+            success=False,
+            error="Action produced no confirmed visual change after recovery attempts",
+            error_code="tool.verification_failed",
+            confidence=0.0,
+            reasoning="Visual verification failed",
+            data={"original_result": result.data},
+        )
 
     # ──────────────────────────────────────────────────────────────
     # Helpers
@@ -873,6 +946,101 @@ class SupervisorAgent(BaseAgent):
 
     def _get_agent(self, name: str) -> Any:
         return self.ctx.runtime._agent_pool.get(name)
+
+    @staticmethod
+    def _is_physical_step(step: dict[str, Any]) -> bool:
+        return str(step.get("type") or step.get("tool_id") or "").lower() in {
+            "click",
+            "mouse_click",
+            "double_click",
+            "right_click",
+            "move_mouse",
+            "drag",
+            "type",
+            "type_text",
+            "key",
+            "hotkey",
+            "scroll",
+            "navigate",
+            "close_app",
+            "computer",
+            "mouse.click",
+            "mouse.double_click",
+            "mouse.right_click",
+            "mouse.move",
+            "mouse.drag",
+            "mouse.scroll",
+            "keyboard.type_text",
+            "keyboard.hotkey",
+            "app.open",
+            "app.close",
+        }
+
+    def _release_ui_lock(self) -> None:
+        if self._ui_lock.locked():
+            self._ui_lock.release()
+
+    def _grant_explicit_task_permissions(self, record: TaskRecord) -> None:
+        mapping = {
+            "screen": "SCREEN_READ",
+            "screen_read": "SCREEN_READ",
+            "mouse": "INPUT_MOUSE",
+            "keyboard": "INPUT_KEYBOARD",
+            "process": "PROCESS_LAUNCH",
+            "file_read": "FILE_READ",
+            "file_write": "FILE_WRITE",
+            "network": "NETWORK",
+        }
+        requested = record.request.options.get("permissions", [])
+        if not isinstance(requested, list):
+            return
+        ttl_sec = min(
+            3600.0,
+            max(1.0, float(record.request.options.get("permission_ttl_sec", 900.0))),
+        )
+        for name in requested:
+            permission = mapping.get(str(name).strip().lower())
+            if permission:
+                self.ctx.security.grant(
+                    permission,
+                    task_id=record.request.id,
+                    session_id=record.request.options.get("session_id"),
+                    ttl_sec=ttl_sec,
+                )
+
+    async def _emit_htlgg_decision(
+        self,
+        record: TaskRecord,
+        step: dict[str, Any],
+        confirmed: bool,
+    ) -> None:
+        htlgg = getattr(self.ctx.runtime, "htlgg", None)
+        if htlgg is None:
+            return
+        risk_name = str(
+            step.get("risk_level")
+            or (record.plan.risk_level if record.plan else "low")
+        ).lower()
+        risk = {
+            "low": RiskLevel.R0,
+            "medium": RiskLevel.R1,
+            "high": RiskLevel.R2,
+            "critical": RiskLevel.R3,
+        }.get(risk_name, RiskLevel.R1)
+        await htlgg.emit(
+            HtlggEnvelope(
+                record=DecisionRecord(
+                    action=str(step.get("tool_id") or step.get("type") or "unknown"),
+                    element_id=str(step.get("element_id") or ""),
+                    expected=str(step.get("expected_outcome") or ""),
+                    risk=risk,
+                    confirmed=confirmed,
+                ),
+                session_id=str(record.request.options.get("session_id") or record.request.id),
+                task_id=record.request.id,
+                metadata={"confidence": step.get("confidence")},
+            )
+        )
 
     async def _wait_for_confirmation(self, task_id: str, timeout: float) -> bool:
         confirmed_event = asyncio.Event()

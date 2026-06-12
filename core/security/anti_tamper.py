@@ -8,8 +8,8 @@ to attribute to the protection rather than an unrelated bug.
 Checks performed:
   1. Python debugger attached (sys.gettrace / pydevd / pdb)
   2. Known cracker tools running (psutil process scan)
-  3. Code-object integrity of critical license functions
-  4. Module-attribute monkey-patching (validate_startup replaced?)
+  3. Code-object integrity of critical runtime/security functions (permission checks, tool execution, supervisor orchestration)
+  4. Module-attribute monkey-patching of those functions
   5. Environment tampering (PYTHONDEBUG, PYTHONINSPECT flags)
 
 Dev bypass:
@@ -202,17 +202,23 @@ def print_dev_token() -> None:
 
 def snapshot_critical_functions() -> None:
     """
-    Hash the __code__ objects of all license-critical Python functions.
-    Call this ONCE at startup, before any task runs.
-    Subsequent watchdog ticks compare against these hashes.
+    Hash the __code__ objects of critical runtime and security functions.
+    Call this ONCE at startup (from AgentMaxRuntime), before any task runs.
+    Subsequent watchdog ticks compare against these hashes to detect monkey-patching.
+
+    Targets are always-active functions that control permissions, tool execution
+    and task orchestration. LicenseManager functions are intentionally NOT used
+    here because entitlements are currently disabled in runtime.
     """
-    from core.security import license_manager as _lm
+    from core.security import permission_manager as _pm
+    from core.tools import executor as _te
+    from core.agents import supervisor as _sup
 
     targets = {
-        "LicenseManager.validate_startup": _lm.LicenseManager.validate_startup,
-        "LicenseManager._heartbeat_loop": _lm.LicenseManager._heartbeat_loop,
-        "LicenseManager._call_whop": _lm.LicenseManager._call_whop,
-        "_whop_http_check": _lm._whop_http_check,
+        "PermissionManager.grant": _pm.PermissionManager.grant,
+        "PermissionManager.check": _pm.PermissionManager.check,
+        "ToolExecutor.execute": _te.ToolExecutor.execute,
+        "SupervisorAgent._execute_task": _sup.SupervisorAgent._execute_task,
     }
     for name, fn in targets.items():
         try:
@@ -341,17 +347,19 @@ def _check_cracker_processes() -> bool:
 
 
 def _check_code_integrity() -> bool:
-    """Verify that license functions haven't been monkey-patched at runtime."""
+    """Verify that critical runtime/security functions haven't been monkey-patched at runtime."""
     if not _CODE_SENTINELS:
         return False  # sentinels not yet taken (too early)
 
-    from core.security import license_manager as _lm
+    from core.security import permission_manager as _pm
+    from core.tools import executor as _te
+    from core.agents import supervisor as _sup
 
     current = {
-        "LicenseManager.validate_startup": _lm.LicenseManager.validate_startup,
-        "LicenseManager._heartbeat_loop": _lm.LicenseManager._heartbeat_loop,
-        "LicenseManager._call_whop": _lm.LicenseManager._call_whop,
-        "_whop_http_check": _lm._whop_http_check,
+        "PermissionManager.grant": _pm.PermissionManager.grant,
+        "PermissionManager.check": _pm.PermissionManager.check,
+        "ToolExecutor.execute": _te.ToolExecutor.execute,
+        "SupervisorAgent._execute_task": _sup.SupervisorAgent._execute_task,
     }
     for name, fn in current.items():
         if name not in _CODE_SENTINELS:

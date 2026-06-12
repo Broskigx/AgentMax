@@ -17,14 +17,9 @@ from core.beta.storage import StorageService
 
 TESTER_ID_FILE = ROOT / "data" / "agentmax_tester_id.txt"
 
-_PRODUCT_MODE = os.environ.get("AGENTMAX_PRODUCT_MODE", "1").strip().lower() not in {
-    "0",
-    "false",
-    "no",
-    "off",
-}
-BACKEND_ID = "agentmax" if _PRODUCT_MODE else "agentpilot_test_server"
-APP_VERSION = "0.1.1" if _PRODUCT_MODE else "test-1.0"
+RUNTIME_MODE = os.environ.get("AGENTMAX_RUNTIME_MODE", "full").strip().lower()
+BACKEND_ID = "agentmax" if RUNTIME_MODE == "full" else f"agentmax_{RUNTIME_MODE}"
+APP_VERSION = "0.1.1" if RUNTIME_MODE == "full" else "0.1.1-limited"
 
 _STORAGE: StorageService | None = None
 _LOGGER: BetaLogger | None = None
@@ -95,6 +90,8 @@ def request_user(
 
 
 def health_payload(*, ipc_auth_enabled: bool) -> dict[str, Any]:
+    cfg = get_beta_config()
+    limited = RUNTIME_MODE != "full"
     return {
         "ok": True,
         "status": "ok",
@@ -102,7 +99,16 @@ def health_payload(*, ipc_auth_enabled: bool) -> dict[str, Any]:
         "backend": BACKEND_ID,
         "ipc_auth_enabled": ipc_auth_enabled,
         "tester_id": local_tester_id(),
-        "runtime_mode": "full" if _PRODUCT_MODE else "beta",
+        "runtime_mode": RUNTIME_MODE,
+        "limited": limited,
+        "fallback_reason": os.environ.get("AGENTMAX_FALLBACK_REASON") if limited else None,
+        "capabilities": {
+            "screen_vision": cfg.feature_flags.screen_vision,
+            "mouse_control": cfg.feature_flags.mouse_control and not limited,
+            "keyboard_control": cfg.feature_flags.keyboard_control and not limited,
+            "terminal": cfg.feature_flags.terminal and not limited,
+            "file_actions": cfg.feature_flags.file_actions and not limited,
+        },
     }
 
 

@@ -185,6 +185,26 @@ export async function clickDesktopMouse(
   return invoke('desktop_click', { token, button, clicks, x, y });
 }
 
+export async function dragDesktopMouse(
+  token: string,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  durationMs = 350,
+  button: MouseButton = 'left',
+): Promise<DesktopToolResult<ActionResult>> {
+  return invoke('desktop_drag', {
+    token,
+    fromX,
+    fromY,
+    toX,
+    toY,
+    durationMs,
+    button,
+  });
+}
+
 export async function scrollDesktop(token: string, deltaX: number, deltaY: number): Promise<DesktopToolResult<ActionResult>> {
   return invoke('desktop_scroll', { token, deltaX, deltaY });
 }

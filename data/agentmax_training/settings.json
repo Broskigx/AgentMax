@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "store_images": false,
   "redact_text": true,
   "schema_version": "AgentMax.training.v1"

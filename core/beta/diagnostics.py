@@ -15,12 +15,36 @@ from core.data_collection.redactor import redact_record, redact_text
 from .config import ROOT, BetaConfig, get_beta_config
 from .storage import StorageService
 
+_FORBIDDEN_NAMES = {
+    ".env",
+    "cookies",
+    "login data",
+    "web data",
+    "local state",
+    "credentials",
+    "secrets",
+}
+_FORBIDDEN_EXTENSIONS = {
+    ".bin",
+    ".ckpt",
+    ".gguf",
+    ".onnx",
+    ".pt",
+    ".pth",
+    ".safetensors",
+}
 
-def _copy_redacted_logs(package_dir: Path) -> list[str]:
+
+def _copy_redacted_logs(package_dir: Path, config: BetaConfig) -> list[str]:
     out_dir = package_dir / "logs"
     out_dir.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
-    for folder in (ROOT / "logs" / "agentmax", ROOT / "logs", ROOT / "runtime_logs"):
+    for folder in (
+        config.data_dir / "logs",
+        ROOT / "logs" / "agentmax",
+        ROOT / "logs",
+        ROOT / "runtime_logs",
+    ):
         if not folder.exists():
             continue
         for path in sorted(folder.glob("*.log"))[:40]:
@@ -48,7 +72,7 @@ def export_diagnostics_bundle(
     package_dir.mkdir(parents=True, exist_ok=True)
 
     feedback_paths = store.export_feedback(package_dir)
-    copied_logs = _copy_redacted_logs(package_dir)
+    copied_logs = _copy_redacted_logs(package_dir, cfg)
     report = redact_record(
         {
             "created_at": datetime.now(UTC).isoformat(),
@@ -75,9 +99,29 @@ def export_diagnostics_bundle(
         "AgentMax diagnostics bundle. Review before sharing. Secrets are redacted automatically.\n",
         encoding="utf-8",
     )
+    _assert_safe_bundle(package_dir)
 
     zip_path = base / f"agentmax-diagnostics-{stamp}.zip"
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in package_dir.rglob("*"):
             zf.write(path, path.relative_to(package_dir))
     return {"ok": True, "zip_path": str(zip_path), "folder": str(package_dir), "created_at": time.time()}
+
+
+def _assert_safe_bundle(package_dir: Path) -> None:
+    allowed_roots = {"README.txt", "diagnostics_report.json", "logs"}
+    for path in package_dir.rglob("*"):
+        if path.is_dir():
+            continue
+        relative = path.relative_to(package_dir)
+        if relative.parts[0] not in allowed_roots and not relative.name.startswith(
+            "agentmax-feedback-"
+        ):
+            raise ValueError(f"Unexpected diagnostics artifact: {relative}")
+        lowered = path.name.lower()
+        if (
+            lowered in _FORBIDDEN_NAMES
+            or path.suffix.lower() in _FORBIDDEN_EXTENSIONS
+            or any(name in lowered for name in ("private_key", "api_key", "token_dump"))
+        ):
+            raise ValueError(f"Forbidden diagnostics artifact: {relative}")

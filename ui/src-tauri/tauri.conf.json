@@ -42,9 +42,8 @@
       "../../scripts/agentpilot_test_server.py",
       "../../scripts/run_daemon.py",
       "../../agentmax.config.json",
-      "../../beta_config.example.json",
-      "../../core/**/*"
-    ],
+      "../../beta_config.example.json"
+    ]
     "windows": {
       "webviewInstallMode": { "type": "skip" }
     }

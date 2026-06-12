@@ -14,6 +14,7 @@ class ToolRouter:
         "double_click": "mouse.double_click",
         "right_click": "mouse.right_click",
         "move_mouse": "mouse.move",
+        "drag": "mouse.drag",
         "scroll": "mouse.scroll",
         "type": "keyboard.type_text",
         "type_text": "keyboard.type_text",
@@ -25,8 +26,8 @@ class ToolRouter:
         "active_window": "window.active",
         # Legacy name-based navigation removed for pure vision + mouse (OpenAI Computer Use style)
         # Use "computer" tool or vision "navigate" with target/description instead.
-        "navigate": "ui.navigate_vision",  # now vision-only
-        "close_app": "ui.close_window",    # vision-based
+        "navigate": "app.open",
+        "close_app": "app.close",
         "shell": "shell.run",
         "read_file": "filesystem.read",
         "write_file": "filesystem.write",
@@ -36,6 +37,7 @@ class ToolRouter:
         "search": "browser.search",
         "read_page": "browser.read_page",
         "wait": "task.wait",
+        "computer": "computer.execute",
         "raw": "reasoning.raw",
     }
 
@@ -55,6 +57,7 @@ class ToolRouter:
                 "legacy_type": step_type,
                 "critical": bool(step.get("critical", False)),
                 "expected_outcome": step.get("expected_outcome"),
+                "confidence": step.get("confidence"),
             },
         )
 
@@ -71,6 +74,14 @@ class ToolRouter:
                 )
             elif isinstance(target, (list, tuple)) and len(target) >= 2:
                 payload.update({"x": int(target[0]), "y": int(target[1])})
+            elif isinstance(target, str) and target.strip():
+                payload["target"] = {"text": target}
+            if "bounds" in step:
+                payload.setdefault("target", {})
+                if isinstance(payload["target"], dict):
+                    payload["target"]["bounds"] = step["bounds"]
+            if "confidence" in step:
+                payload["confidence"] = step["confidence"]
             if tool_id in {"mouse.click", "mouse.right_click", "mouse.double_click"}:
                 payload.setdefault("button", step.get("click_type", "left"))
             if "x" in step:
@@ -81,6 +92,12 @@ class ToolRouter:
                 payload["direction"] = step["direction"]
             if "amount" in step:
                 payload["amount"] = step["amount"]
+            if tool_id == "mouse.drag":
+                if "path" in step:
+                    payload["path"] = step["path"]
+                for key in ("x1", "y1", "x2", "y2", "duration_ms"):
+                    if key in step:
+                        payload[key] = step[key]
 
         elif tool_id.startswith("keyboard."):
             if "text" in step:
@@ -105,8 +122,12 @@ class ToolRouter:
                 payload["description"] = f"visually locate close button for {step['app']}"
         elif tool_id == "shell.run":
             payload["command"] = step.get("command", "")
+            if "cwd" in step:
+                payload["cwd"] = step["cwd"]
             if "timeout_sec" in step:
                 payload["timeout_ms"] = int(float(step["timeout_sec"]) * 1000)
+        elif tool_id == "computer.execute":
+            payload["actions"] = list(step.get("actions") or [])
         elif tool_id.startswith("filesystem."):
             for key in ("path", "source", "destination", "content"):
                 if key in step:

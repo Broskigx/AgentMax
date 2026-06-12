@@ -16,7 +16,7 @@ and how to enable / verify / roll them back. Status as of 2026-05-23.
 | `AGENTMAX_DEV_BYPASS` | unset | Skip anti-tamper checks in dev / suppress license-required errors | Unset the env var |
 | `AGENTMAX_DEV_TOKEN` | unset | HMAC-derived machine-specific dev bypass for anti-tamper | Unset the env var |
 | `AGENTMAX_OBSERVABILITY` | `1` (ON) | Strip `<think>` from LMStudio replies + publish `ai.thinking` / `ai.tokens` / `ai.response` events | Set to `0` |
-| `AGENTMAX_IPC_AUTH` | unset (OFF) | Require `X-AgentMax-Token` on REST + WS handshake on the IPC server | Unset the env var |
+| `AGENTMAX_IPC_AUTH` | `1` (ON) | Require `X-AgentMax-Token` on REST + WS handshake on the IPC server | Set to `0` only for isolated development |
 | `AGENTMAX_AUDIT_HMAC_KEY` | unset | HMAC-sign each audit-log entry for offline tamper verification | Unset the env var |
 | `AGENTMAX_AIR_GAP` | `1` in `SecurityConfig` | Block outbound non-loopback `socket.create_connection` and `getaddrinfo` | Set to `0` |
 | `AGENTMAX_REQUIRE_CONSENT` | `1` in `SecurityConfig` | Make `PermissionManager.require()` raise instead of auto-granting | Set to `0` |
@@ -38,8 +38,8 @@ flagged as **critical** in §5 of the architecture audit:
 - **WebSocket**: `ws://127.0.0.1:7788` — any local process can subscribe to
   ALL bus events (including `ai.thinking` raw chain-of-thought).
 
-Both are now gateable with a single token shared between the Tauri shell and
-the Python IPC server.
+Both are gated by default with a single token shared between the Tauri shell
+and the Python IPC server.
 
 ### Token lifecycle
 

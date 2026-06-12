@@ -1,7 +1,7 @@
 """
 Vision bridge — async interface to the PixelAnalyzer engine.
 
-Provides the same capture/OCR/accessibility surface that agents expect,
+Provides capture/OCR plus limited active-window metadata,
 backed by the smart PIL-based PixelAnalyzer. Includes:
   - Frame deduplication with perceptual hashing
   - Adaptive quality/region encoding
@@ -12,6 +12,7 @@ backed by the smart PIL-based PixelAnalyzer. Includes:
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 import structlog
@@ -31,7 +32,7 @@ class RustVisionBridge:
       - capture_base64()  → frame-aware dedup + adaptive encoding
       - capture()         → raw PIL Image
       - recognize()       → OCR with preprocessing
-      - get_focused_window_tree() → accessibility via win32
+      - get_focused_window_tree() → limited active-window metadata via win32
       - get_encoded_frame() → full EncodedFrame with diff metadata
 
     All heavy I/O runs in asyncio.to_thread to keep the event loop responsive.
@@ -283,8 +284,8 @@ class RustVisionBridge:
         Return the active window title and HWND via win32 (Windows only).
 
         Returns:
-            Dict with 'name' (title), 'hwnd' (int), 'children' (empty list).
-            Empty dict on non-Windows or error.
+            Limited dict with 'name' (title), 'hwnd' (int), and empty
+            'children'. This is not a complete accessibility tree.
         """
         import sys
 
@@ -323,6 +324,3 @@ class RustVisionBridge:
     def dedup_stats(self) -> dict:
         """Frame deduplication statistics."""
         return self._pixel.dedup_stats
-
-
-import time  # noqa: E402 — import after class for clean top-level imports

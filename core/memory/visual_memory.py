@@ -16,6 +16,8 @@ from typing import Any
 
 import structlog
 
+from core.data_collection.redactor import redact_record
+
 log = structlog.get_logger(__name__)
 
 MAX_TEMPLATES = 500
@@ -30,10 +32,24 @@ class VisualMemory:
         self._ttl_sec: float = float(getattr(config, "visual_cache_ttl_sec", 300.0))
         self._lock = threading.Lock()
 
-        base = Path(getattr(config, "chroma_path", ".AGENTMAX_data"))
-        self._tmpl_dir = base / "visual_templates"
+        base = Path(
+            getattr(
+                config,
+                "visual_memory_path",
+                getattr(config, "chroma_path", ".AGENTMAX_data/visual_templates"),
+            )
+        )
+        self._tmpl_dir = base
         self._index_path = self._tmpl_dir / "index.jsonl"
-        self._max_templates = int(getattr(config, "visual_max_templates", MAX_TEMPLATES))
+        self._legacy_index_path = Path(".AGENTMAX_data") / "visual_templates" / "index.jsonl"
+        self._max_templates = int(
+            getattr(
+                config,
+                "max_visual_templates",
+                getattr(config, "visual_max_templates", MAX_TEMPLATES),
+            )
+        )
+        self._store_images = bool(getattr(config, "store_visual_images", False))
 
         self._stop_event = threading.Event()
         self._cleanup_thread = threading.Thread(
@@ -56,12 +72,13 @@ class VisualMemory:
 
     def put(self, app_name: str, layout: dict) -> None:
         key = self._normalize(app_name)
+        safe_layout = redact_record(layout)
         with self._lock:
             if len(self._cache) >= self._max_size and key not in self._cache:
                 oldest = min(self._timestamps, key=lambda k: self._timestamps[k])
                 self._cache.pop(oldest, None)
                 self._timestamps.pop(oldest, None)
-            self._cache[key] = layout
+            self._cache[key] = safe_layout
             self._timestamps[key] = time.monotonic()
 
     def invalidate(self, app_name: str) -> None:
@@ -92,63 +109,65 @@ class VisualMemory:
         crop_data: Any,
         metadata: dict | None = None,
     ) -> str:
-        """
-        Save a UI element template (cropped image) to disk for visual matching.
-
-        Templates are saved as PNG files in:
-            .AGENTMAX_data/visual_templates/{app}__{label}__{id}.png
-
-        Args:
-            app_name: Application context for visual memory (used as cache key, resolved visually by the AI)
-            label: Human-readable label (e.g. "search_button", "send_btn")
-            crop_data: Either a PIL Image (the cropped element) or a dict
-                      with 'bounds' [x, y, w, h] and 'source' (will re-capture)
-            metadata: Optional dict with additional info
-
-        Returns:
-            Template ID string, or empty string on failure.
-        """
+        """Persist privacy-safe template metadata and optionally an image crop."""
         try:
             from PIL import Image
 
+            if self._is_sensitive_context(app_name, label, metadata):
+                log.warning("visual_memory.sensitive_template_blocked", app=app_name, label=label)
+                return ""
+            safe_metadata = redact_record(metadata or {})
             self._tmpl_dir.mkdir(parents=True, exist_ok=True)
-
-            # Get the actual image data
+            bounds: list[int] | None = None
+            source = "unknown"
+            img: Any | None = None
             if isinstance(crop_data, Image.Image):
                 img = crop_data
+                bounds = [0, 0, int(img.width), int(img.height)]
+                source = "provided_image"
             elif isinstance(crop_data, dict):
-                bounds = crop_data.get("bounds")
-                if bounds and len(bounds) == 4:
-                    # Re-capture and crop
+                raw_bounds = crop_data.get("bounds")
+                source = str(crop_data.get("source") or "metadata")
+                if raw_bounds and len(raw_bounds) == 4:
+                    bounds = [int(value) for value in raw_bounds]
+                if self._store_images and bounds:
                     screenshot = self._capture_screenshot()
                     if screenshot:
                         x, y, w, h = bounds
                         img = screenshot.crop((x, y, x + w, y + h))
-                    else:
-                        log.warning("visual_memory.save_cannot_capture")
-                        return ""
-                else:
-                    log.warning("visual_memory.save_invalid_bounds", crop_data=crop_data)
-                    return ""
             else:
                 log.warning("visual_memory.save_unknown_type", type=type(crop_data).__name__)
                 return ""
 
-            tid = self._template_id(app_name, label, img)
-            filename = f"{self._normalize(app_name)}__{self._normalize(label)}__{tid}.png"
-            filepath = self._tmpl_dir / filename
+            if not bounds:
+                log.warning("visual_memory.save_invalid_bounds", crop_data=str(crop_data)[:200])
+                return ""
+            descriptor = {
+                "bounds": bounds,
+                "source": source,
+                "metadata": safe_metadata,
+            }
+            tid = self._template_id(app_name, label, descriptor)
+            filepath: Path | None = None
+            perceptual_hash = self._image_hash(img) if img is not None else ""
+            if self._store_images and img is not None:
+                filename = (
+                    f"{self._normalize(app_name)}__{self._normalize(label)}__{tid}.png"
+                )
+                filepath = self._tmpl_dir / filename
+                img.save(filepath, format="PNG")
 
-            # Save as PNG (lossless, good for template matching)
-            img.save(filepath, format="PNG")
-
-            # Append to index
             entry = {
                 "id": tid,
                 "app": self._normalize(app_name),
-                "label": label,
-                "path": str(filepath),
+                "label": self._normalize(label),
+                "bounds": bounds,
+                "source": source,
+                "perceptual_hash": perceptual_hash,
+                "path": str(filepath) if filepath else None,
+                "image_stored": bool(filepath),
                 "saved_at": time.time(),
-                "metadata": metadata or {},
+                "metadata": safe_metadata,
             }
             with self._index_path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(entry, ensure_ascii=True) + "\n")
@@ -160,6 +179,48 @@ class VisualMemory:
         except Exception as exc:
             log.warning("visual_memory.save_error", error=str(exc))
             return ""
+
+    @staticmethod
+    def _image_hash(image: Any | None) -> str:
+        if image is None:
+            return ""
+        try:
+            grayscale = image.convert("L").resize((8, 8))
+            pixels = list(grayscale.getdata())
+            average = sum(pixels) / max(1, len(pixels))
+            return "".join("1" if value >= average else "0" for value in pixels)
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _is_sensitive_context(
+        app_name: str,
+        label: str,
+        metadata: dict | None,
+    ) -> bool:
+        text = " ".join(
+            [
+                str(app_name),
+                str(label),
+                json.dumps(metadata or {}, ensure_ascii=True),
+            ]
+        ).lower()
+        return any(
+            term in text
+            for term in (
+                "password",
+                "passwd",
+                "credential",
+                "login",
+                "sign in",
+                "token",
+                "secret",
+                "api key",
+                "authentication",
+                "2fa",
+                "one-time code",
+            )
+        )
 
     def _capture_screenshot(self) -> Any | None:
         """Capture a screenshot for template creation."""
@@ -393,8 +454,13 @@ class VisualMemory:
 
         # Return bounds from the first matching index entry
         try:
-            if self._index_path.exists():
-                for line in self._index_path.read_text(encoding="utf-8").splitlines():
+            index_path = (
+                self._index_path
+                if self._index_path.exists()
+                else self._legacy_index_path
+            )
+            if index_path.exists():
+                for line in index_path.read_text(encoding="utf-8").splitlines():
                     try:
                         entry = json.loads(line)
                         app_norm = self._normalize(app_name)

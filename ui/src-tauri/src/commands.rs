@@ -1510,8 +1510,14 @@ pub fn desktop_resume_automation(
         .0
         .lock()
         .map_err(|_| "Desktop automation state poisoned".to_string())?;
-    let status = service.resume();
-    Ok(DesktopToolResult::ok(status, started, false))
+    match service.resume() {
+        Ok(status) => Ok(DesktopToolResult::ok(status, started, false)),
+        Err(error) => Ok(DesktopToolResult::fail(
+            error,
+            started,
+            service.intervention_status().paused,
+        )),
+    }
 }
 
 #[tauri::command]

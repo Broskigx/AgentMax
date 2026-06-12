@@ -58,6 +58,10 @@ class AgentMaxRuntime:
     # --------------------------------------------------------------------------
 
     async def start(self) -> None:
+        if self.config.config_errors:
+            raise ValueError(
+                "Invalid AgentMax configuration: " + "; ".join(self.config.config_errors)
+            )
         log.info("runtime.booting", version="0.1.0")
         self._loop = asyncio.get_running_loop()
         await self._setup_logging()
@@ -153,6 +157,10 @@ class AgentMaxRuntime:
         self._subsystems.append("event_bus")
 
     async def _start_security(self) -> None:
+        from core.beta.redis_service import RedisService
+        from core.beta.storage import StorageService
+        from core.htlgg import HtlggBus
+        from core.htlgg.redis_bridge import HtlggRedisBridge
         from core.security.audit_log import AuditLog
         from core.security.permission_manager import PermissionManager
 
@@ -160,7 +168,25 @@ class AgentMaxRuntime:
         hmac_key = getattr(self.config.security, "audit_hmac_key", "")
         self.audit = AuditLog(self.config.security.audit_log, hmac_key=hmac_key)
         await self.audit.start()
+        storage = None
+        if self.config.feature_flags.sqlite_storage:
+            storage = StorageService()
+        redis_client = None
+        if self.config.feature_flags.redis_queue:
+            redis_service = RedisService(storage=storage)
+            redis_service.connect()
+            redis_client = redis_service.client
+        self.htlgg = HtlggBus(
+            event_bus=self.bus,
+            bridge=HtlggRedisBridge(redis_client=redis_client, storage=storage),
+        )
         self._subsystems.append("security")
+
+        # Wire anti-tamper AFTER PermissionManager exists. Snapshot real critical
+        # functions that are always active (not the disabled LicenseManager).
+        from core.security.anti_tamper import snapshot_critical_functions, start_watchdog
+        snapshot_critical_functions()
+        start_watchdog(degradation_callback=self._on_tamper_detected)
 
     async def _start_memory(self) -> None:
         from core.memory.long_term import LongTermMemory
@@ -243,7 +269,10 @@ class AgentMaxRuntime:
         from core.telemetry.telemetry_client import TelemetryClient
 
         self.telemetry = TelemetryClient(
-            enabled=getattr(self.config, "telemetry_enabled", True),
+            enabled=bool(
+                getattr(self.config, "telemetry_enabled", False)
+                and self.config.feature_flags.telemetry
+            ),
             client_version=getattr(self.config, "version", "1.0.0"),
         )
         # Telemetry sends via the license manager's HTTP client when available.

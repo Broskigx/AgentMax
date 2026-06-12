@@ -14,6 +14,7 @@ from pathlib import Path
 import structlog
 
 from core.agents.base_agent import ActionResult, AgentCapability, AgentContext, BaseAgent
+from core.security.policy import SecurityPolicy, resolve_allowed_dirs
 
 log = structlog.get_logger(__name__)
 
@@ -27,9 +28,7 @@ _DEFAULT_SAFE_DIRS: list[Path] = [
 
 
 def _resolve_safe_dirs(config_dirs: list[str]) -> list[Path]:
-    if config_dirs:
-        return [Path(d).resolve() for d in config_dirs]
-    return [d.resolve() for d in _DEFAULT_SAFE_DIRS]
+    return resolve_allowed_dirs(config_dirs)
 
 
 def _is_safe_path(path: Path, safe_dirs: list[Path]) -> bool:
@@ -51,6 +50,7 @@ class FileSystemAgent(BaseAgent):
         super().__init__(ctx)
         cfg_dirs: list[str] = getattr(ctx.config.security, "allowed_fs_dirs", [])
         self._safe_dirs = _resolve_safe_dirs(cfg_dirs)
+        self._policy = SecurityPolicy(cfg_dirs)
 
     @property
     def name(self) -> str:
@@ -66,13 +66,31 @@ class FileSystemAgent(BaseAgent):
             AgentCapability("delete_file", "Permanently delete a file/folder"),
         ]
 
-    def _check_path(self, path: Path) -> ActionResult | None:
+    def _check_path(
+        self,
+        path: Path,
+        operation: str,
+        *,
+        explicit_override: bool = False,
+    ) -> ActionResult | None:
         """Return an ActionResult error if path is outside the sandbox, else None."""
-        if not _is_safe_path(path, self._safe_dirs):
-            safe_list = [str(d) for d in self._safe_dirs]
-            msg = f"Path '{path}' is outside allowed directories: {safe_list}"
-            log.warning("fs_agent.sandbox_violation", path=str(path), allowed=safe_list)
-            return ActionResult(success=False, error=msg)
+        decision = self._policy.validate_path(
+            path,
+            operation=operation,
+            explicit_override=explicit_override,
+        )
+        if not decision.allowed:
+            log.warning(
+                "fs_agent.policy_violation",
+                path=str(path),
+                operation=operation,
+                code=decision.code,
+            )
+            return ActionResult(
+                success=False,
+                error=decision.reason,
+                error_code=decision.code,
+            )
         return None
 
     async def _audit(self, op: str, path: str, extra: dict | None = None) -> None:
@@ -80,7 +98,9 @@ class FileSystemAgent(BaseAgent):
 
     async def read_file(self, step: dict) -> ActionResult:
         path = Path(step.get("path", ""))
-        if err := self._check_path(path):
+        if err := self._check_path(
+            path, "read", explicit_override=bool(step.get("explicit_override"))
+        ):
             await self._audit("read_blocked", str(path))
             return err
         try:
@@ -95,7 +115,9 @@ class FileSystemAgent(BaseAgent):
 
     async def write_file(self, step: dict) -> ActionResult:
         path = Path(step.get("path", ""))
-        if err := self._check_path(path):
+        if err := self._check_path(
+            path, "write", explicit_override=bool(step.get("explicit_override"))
+        ):
             await self._audit("write_blocked", str(path))
             return err
         content = step.get("content", "")
@@ -110,7 +132,9 @@ class FileSystemAgent(BaseAgent):
 
     async def list_dir(self, step: dict) -> ActionResult:
         path = Path(step.get("path", "."))
-        if err := self._check_path(path):
+        if err := self._check_path(
+            path, "list", explicit_override=bool(step.get("explicit_override"))
+        ):
             await self._audit("list_blocked", str(path))
             return err
         try:
@@ -131,10 +155,11 @@ class FileSystemAgent(BaseAgent):
     async def move_file(self, step: dict) -> ActionResult:
         src = Path(step.get("source", ""))
         dst = Path(step.get("destination", ""))
-        if err := self._check_path(src):
+        override = bool(step.get("explicit_override"))
+        if err := self._check_path(src, "move", explicit_override=override):
             await self._audit("move_blocked", str(src))
             return err
-        if err := self._check_path(dst):
+        if err := self._check_path(dst, "move", explicit_override=override):
             await self._audit("move_blocked_dst", str(dst))
             return err
         try:
@@ -147,7 +172,9 @@ class FileSystemAgent(BaseAgent):
 
     async def delete_file(self, step: dict) -> ActionResult:
         path = Path(step.get("path", ""))
-        if err := self._check_path(path):
+        if err := self._check_path(
+            path, "delete", explicit_override=bool(step.get("explicit_override"))
+        ):
             await self._audit("delete_blocked", str(path))
             return err
         try:

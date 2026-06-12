@@ -130,6 +130,12 @@ def ensure_token() -> str:
     """
     env_token = os.environ.get(TOKEN_ENV_VAR, "").strip()
     if env_token:
+        try:
+            persisted = token_file_path().read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeError):
+            persisted = ""
+        if persisted != env_token:
+            _write_token_file(env_token)
         return env_token
 
     path = token_file_path()
@@ -220,8 +226,10 @@ def check_rest_request(
         return
     if is_exempt_path(path):
         return
-    # FastAPI exposes headers as a Headers obj; accept any dict-like with .get
-    presented = headers.get(AUTH_HEADER) or headers.get(AUTH_HEADER.lower())
+    normalized_headers = {
+        str(name).lower(): str(value) for name, value in headers.items()
+    }
+    presented = normalized_headers.get(AUTH_HEADER.lower())
     if not validate_token(presented, expected_token):
         raise IPCAuthError("missing_or_invalid_token")
 

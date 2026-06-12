@@ -3,7 +3,7 @@ LeanVisionAgent -- lightweight "vision" agent backed by RustVisionBridge.
 
 No ML models. Element detection uses three layers in priority order:
   1. Visual template memory  (saved bounds from prior confirmed clicks)
-  2. Windows Accessibility tree (UIA text/role matching via the Rust bridge)
+  2. Accessibility candidates when a real bounded tree provider is available
   3. OCR text items           (from the Rust bridge OCR endpoint)
 
 This restores the `vision_agent.find_element(target)` contract that
@@ -15,24 +15,14 @@ from __future__ import annotations
 
 import difflib
 import re
-from dataclasses import dataclass
 from typing import Any
 
 import structlog
 
 from core.agents.base_agent import ActionResult, AgentCapability, BaseAgent
+from core.htlgg import ElementCandidate, HtlggEnvelope, StateRecord
 
 log = structlog.get_logger(__name__)
-
-
-@dataclass
-class FoundElement:
-    """Returned by find_element(); supervisor reads .confidence and .bounds."""
-
-    bounds: tuple[int, int, int, int] | None  # (x, y, w, h)  pixel coords
-    confidence: float  # 0.0 - 1.0
-    source: str  # "template" | "accessibility" | "ocr" | "none"
-    text: str = ""
 
 
 class LeanVisionAgent(BaseAgent):
@@ -48,8 +38,14 @@ class LeanVisionAgent(BaseAgent):
     @property
     def capabilities(self) -> list[AgentCapability]:
         return [
-            AgentCapability("find_element", "Locate UI elements via accessibility + OCR"),
-            AgentCapability("get_current_state", "Return current accessibility + capture snapshot"),
+            AgentCapability(
+                "find_element",
+                "Locate bounded candidates via cache, OCR, or accessibility when available",
+            ),
+            AgentCapability(
+                "get_current_state",
+                "Return capture state plus explicitly limited accessibility metadata",
+            ),
             AgentCapability(
                 "capture_and_analyze", "Take screenshot and return data for AI planner"
             ),
@@ -61,18 +57,23 @@ class LeanVisionAgent(BaseAgent):
         """Called by supervisor before every step to refresh vision state."""
         try:
             tree = await self.ctx.accessibility.get_focused_window_tree()
-            return {"accessibility_tree": tree, "ok": True}
+            return {
+                "accessibility_tree": tree,
+                "accessibility_limited": not bool(tree.get("children"))
+                if isinstance(tree, dict)
+                else True,
+                "ok": True,
+            }
         except Exception as exc:
             log.debug("vision.get_current_state_failed", error=str(exc))
             return {"ok": False}
 
-    async def find_element(self, target: str) -> FoundElement | None:
+    async def find_element(self, target: str) -> ElementCandidate | None:
         """
         Search for a UI element matching *target* text.
 
-        Returns a FoundElement (never raises). If nothing is found,
-        returns a stub with confidence=0.0 -- the supervisor's learning-mode
-        check will trigger and ask the user to confirm.
+        Returns an ElementCandidate when a source provides real bounds.
+        Missing or low-confidence matches return None.
         """
         if not target:
             return None
@@ -81,12 +82,14 @@ class LeanVisionAgent(BaseAgent):
         el = await self._search_template_memory(target)
         if el and el.confidence >= 0.90:
             log.debug("vision.found_via_template", target=target, conf=el.confidence)
+            await self._emit_candidate(el)
             return el
 
         # ── 2. Accessibility tree (UIA, no pixels needed) ──────────────────────
         el = await self._search_accessibility(target)
         if el and el.confidence >= 0.75:
             log.debug("vision.found_via_accessibility", target=target, conf=el.confidence)
+            await self._emit_candidate(el)
             return el
 
         # ── 3. OCR (pixel-based, slightly less trusted) ────────────────────────
@@ -96,11 +99,11 @@ class LeanVisionAgent(BaseAgent):
 
         if el and el.confidence >= 0.55:
             log.debug("vision.found_via_ocr", target=target, conf=el.confidence)
+            await self._emit_candidate(el)
             return el
 
-        # Nothing found -- return stub so learning-mode kicks in
         log.info("vision.element_not_found", target=target)
-        return FoundElement(bounds=None, confidence=0.0, source="none", text=target)
+        return None
 
     async def wait_for_stable_screen(
         self,
@@ -185,6 +188,27 @@ class LeanVisionAgent(BaseAgent):
             # Use the rich encoding pipeline
             encoded = await self.ctx.capture.get_encoded_frame()
             tree = await self.ctx.accessibility.get_focused_window_tree()
+            htlgg = getattr(self.ctx.runtime, "htlgg", None)
+            if htlgg is not None:
+                await htlgg.emit(
+                    HtlggEnvelope(
+                        record=StateRecord(
+                            screen_id=encoded.perceptual_hash or "screen",
+                            width=encoded.width,
+                            height=encoded.height,
+                            animation="stable" if encoded.changed_ratio < 0.005 else "motion",
+                            perceptual_hash=encoded.perceptual_hash,
+                        ),
+                        session_id=str(step.get("_session_id") or step.get("_task_id") or "local"),
+                        task_id=step.get("_task_id"),
+                        metadata={
+                            "changed_ratio": encoded.changed_ratio,
+                            "accessibility_limited": not bool(tree.get("children"))
+                            if isinstance(tree, dict)
+                            else True,
+                        },
+                    )
+                )
 
             if encoded.is_duplicate:
                 # Frame didn't change — return minimal response
@@ -195,6 +219,9 @@ class LeanVisionAgent(BaseAgent):
                         "changed_ratio": 0.0,
                         "perceptual_hash": encoded.perceptual_hash,
                         "accessibility_tree": tree,
+                        "accessibility_limited": not bool(tree.get("children"))
+                        if isinstance(tree, dict)
+                        else True,
                         "note": "Screen hasn't changed since last capture",
                     },
                 )
@@ -206,6 +233,9 @@ class LeanVisionAgent(BaseAgent):
                     "width": encoded.width,
                     "height": encoded.height,
                     "accessibility_tree": tree,
+                    "accessibility_limited": not bool(tree.get("children"))
+                    if isinstance(tree, dict)
+                    else True,
                     "ocr_text": encoded.ocr_text,
                     "changed_ratio": encoded.changed_ratio,
                     "changed_region": encoded.changed_region,
@@ -219,24 +249,25 @@ class LeanVisionAgent(BaseAgent):
 
     # ── Internal search helpers ────────────────────────────────────────────────
 
-    async def _search_template_memory(self, target: str) -> FoundElement | None:
+    async def _search_template_memory(self, target: str) -> ElementCandidate | None:
         try:
             tree = await self.ctx.accessibility.get_focused_window_tree()
             active_win = tree.get("name", "") if isinstance(tree, dict) else ""
             tmpl = self.ctx.visual_memory.find_template(active_win, target)
             if tmpl and tmpl.get("bounds"):
                 b = tmpl["bounds"]
-                return FoundElement(
+                return ElementCandidate(
                     bounds=(int(b[0]), int(b[1]), int(b[2]), int(b[3])),
                     confidence=0.92,
-                    source="template",
+                    source="cache",
                     text=target,
+                    id=str(tmpl.get("id") or _element_id(target, b)),
                 )
         except Exception:
             pass
         return None
 
-    async def _search_accessibility(self, target: str) -> FoundElement | None:
+    async def _search_accessibility(self, target: str) -> ElementCandidate | None:
         try:
             tree = await self.ctx.accessibility.get_focused_window_tree()
             return _search_tree(tree, target)
@@ -244,7 +275,7 @@ class LeanVisionAgent(BaseAgent):
             log.debug("vision.accessibility_search_error", error=str(exc))
             return None
 
-    async def _search_ocr(self, target: str) -> FoundElement | None:
+    async def _search_ocr(self, target: str) -> ElementCandidate | None:
         try:
             # Always run explicit OCR — frame dedup may skip encoding but
             # the agent still needs to read text from the current screen.
@@ -280,6 +311,18 @@ class LeanVisionAgent(BaseAgent):
             log.debug("vision.ocr_search_error", error=str(exc))
             return None
 
+    async def _emit_candidate(self, candidate: ElementCandidate) -> None:
+        htlgg = getattr(self.ctx.runtime, "htlgg", None)
+        if htlgg is None:
+            return
+        await htlgg.emit(
+            HtlggEnvelope(
+                record=candidate,
+                session_id="vision",
+                metadata={"source": candidate.source},
+            )
+        )
+
 
 # ── Pure-function helpers (no I/O) ─────────────────────────────────────────────
 
@@ -292,12 +335,12 @@ def _similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, _normalize(a), _normalize(b)).ratio()
 
 
-def _search_tree(node: Any, target: str) -> FoundElement | None:
+def _search_tree(node: Any, target: str) -> ElementCandidate | None:
     """BFS through the accessibility tree returned by RustVisionBridge."""
     if not isinstance(node, dict):
         return None
 
-    best: FoundElement | None = None
+    best: ElementCandidate | None = None
     queue = [node]
 
     while queue:
@@ -317,13 +360,16 @@ def _search_tree(node: Any, target: str) -> FoundElement | None:
                         int(raw_bounds[2]),
                         int(raw_bounds[3]),
                     )
+                if bounds is None:
+                    continue
                 conf = min(score, 0.95)
                 if best is None or conf > best.confidence:
-                    best = FoundElement(
+                    best = ElementCandidate(
                         bounds=bounds,
                         confidence=conf,
                         source="accessibility",
                         text=name,
+                        id=_element_id(name, bounds),
                     )
 
         for child in n.get("children", []):
@@ -332,12 +378,12 @@ def _search_tree(node: Any, target: str) -> FoundElement | None:
     return best
 
 
-def _search_ocr_items(items: list[dict[str, Any]], target: str) -> FoundElement | None:
+def _search_ocr_items(items: list[dict[str, Any]], target: str) -> ElementCandidate | None:
     """Search the OCR result list for the best text match."""
     if not items:
         return None
 
-    best: FoundElement | None = None
+    best: ElementCandidate | None = None
     for item in items:
         raw_text = item.get("text") or item.get("label") or ""
         text = raw_text if isinstance(raw_text, str) else ""
@@ -356,8 +402,29 @@ def _search_ocr_items(items: list[dict[str, Any]], target: str) -> FoundElement 
         else:
             bounds = None
 
-        conf = score * 0.85  # OCR is slightly less trusted than accessibility tree
+        if bounds is None:
+            continue
+        raw_conf = item.get("conf", item.get("confidence"))
+        try:
+            source_conf = float(raw_conf)
+            if source_conf > 1.0:
+                source_conf /= 100.0
+        except (TypeError, ValueError):
+            source_conf = score * 0.75
+        conf = min(score, max(0.0, min(1.0, source_conf))) * 0.95
         if best is None or conf > best.confidence:
-            best = FoundElement(bounds=bounds, confidence=conf, source="ocr", text=text)
+            best = ElementCandidate(
+                bounds=bounds,
+                confidence=conf,
+                source="ocr",
+                text=text,
+                id=_element_id(text, bounds),
+            )
 
     return best
+
+
+def _element_id(text: str, bounds: Any) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", _normalize(text)).strip("-")[:32] or "element"
+    coords = "-".join(str(int(value)) for value in bounds)
+    return f"{normalized}-{coords}"

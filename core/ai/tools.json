@@ -291,7 +291,7 @@
               "properties": {
                 "action": {
                   "type": "string",
-                  "enum": ["click", "double_click", "move", "type", "key", "scroll", "wait", "screenshot"]
+                  "enum": ["click", "double_click", "move", "type", "key", "scroll", "drag", "wait", "screenshot"]
                 },
                 "x": {"type": "integer"},
                 "y": {"type": "integer"},
@@ -299,6 +299,10 @@
                 "text": {"type": "string"},
                 "scroll_x": {"type": "integer", "default": 0},
                 "scroll_y": {"type": "integer", "default": 0},
+                "path": {
+                  "type": "array",
+                  "description": "Drag path as [[x,y], ...]"
+                },
                 "duration_ms": {"type": "integer"}
               },
               "required": ["action"]

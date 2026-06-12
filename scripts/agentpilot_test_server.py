@@ -33,6 +33,9 @@ if str(ROOT) not in sys.path:
 
 from core.beta import BetaLogger, RedisService, StorageService, export_diagnostics_bundle, get_beta_config
 from core.beta.smoke import run_beta_smoke_test
+from core.data_collection import consent as beta_consent
+from core.data_collection.redactor import redact_record, redact_text
+from core.security.ipc_auth import IPCAuthError, check_rest_request, ensure_token
 
 TASKS: dict[str, dict[str, Any]] = {}
 STARTED_AT = time.time()
@@ -47,27 +50,28 @@ INITIAL_TOKENS = 5000
 TESTER_ID_FILE = Path("data") / "agentmax_tester_id.txt"
 MAX_REQUEST_TOKENS = 900
 ADMIN_KEY = os.environ.get("AGENTMAX_ADMIN_KEY", "")
-DATASET_ENABLED = os.environ.get("AGENTMAX_DATASET_ENABLED", "1").strip().lower() not in {
+BETA_CONFIG = get_beta_config()
+if BETA_CONFIG.config_errors:
+    raise RuntimeError(
+        "Invalid AgentMax configuration: " + "; ".join(BETA_CONFIG.config_errors)
+    )
+DATASET_ENABLED = os.environ.get("AGENTMAX_DATASET_ENABLED", "0").strip().lower() not in {
     "0",
     "false",
     "no",
-}
+} and BETA_CONFIG.beta_data_optin and beta_consent.is_enabled()
 DATASET_STORE_IMAGES = os.environ.get("AGENTMAX_DATASET_STORE_IMAGES", "0").strip().lower() in {
     "1",
     "true",
     "yes",
 }
-BETA_CONFIG = get_beta_config()
-PRODUCT_MODE = os.environ.get("AGENTMAX_PRODUCT_MODE", "1").strip().lower() not in {
-    "0",
-    "false",
-    "no",
-    "off",
-}
-BACKEND_ID = "agentmax" if PRODUCT_MODE else "agentpilot_test_server"
-APP_VERSION = "0.1.1" if PRODUCT_MODE else "test-1.0"
-DEFAULT_MODEL_ID = "agentmax-local" if PRODUCT_MODE else "AgentMax-test"
-VISION_MODEL_ID = "agentmax-vision" if PRODUCT_MODE else "AgentMax-test-vision-metadata"
+RUNTIME_MODE = os.environ.get("AGENTMAX_RUNTIME_MODE", "beta_fallback").strip().lower()
+LIMITED_MODE = RUNTIME_MODE != "full"
+PRODUCT_MODE = not LIMITED_MODE
+BACKEND_ID = "agentmax" if PRODUCT_MODE else f"agentmax_{RUNTIME_MODE}"
+APP_VERSION = "0.1.1" if PRODUCT_MODE else "0.1.1-limited"
+DEFAULT_MODEL_ID = "agentmax-local" if PRODUCT_MODE else "AgentMax-limited"
+VISION_MODEL_ID = "agentmax-vision" if PRODUCT_MODE else "AgentMax-vision-metadata"
 TASK_COMPLETED_MSG = (
     "Tarea registrada y completada por el runtime local. "
     "El control de escritorio requiere permiso explicito en la app."
@@ -79,6 +83,8 @@ BETA_STORAGE.migrate()
 BETA_LOGGER = BetaLogger(storage=BETA_STORAGE)
 BETA_REDIS = RedisService(config=BETA_CONFIG, storage=BETA_STORAGE)
 BETA_REDIS.connect()
+IPC_AUTH_ENABLED = BETA_CONFIG.ipc_auth_enabled
+IPC_TOKEN = ensure_token() if IPC_AUTH_ENABLED else ""
 ACTION_RE = re.compile(
     r"\b(abre|abrir|ejecuta|busca|crea|lee|lista|borra|mueve|click|clic|terminal|powershell)\b"
 )
@@ -103,7 +109,7 @@ def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[s
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
     handler.send_header(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-AgentMax-User, X-AgentMax-Admin",
+        "Content-Type, Authorization, X-AgentMax-User, X-AgentMax-Admin, X-AgentMax-Token",
     )
     handler.end_headers()
     handler.wfile.write(body)
@@ -156,6 +162,24 @@ def _path(handler: BaseHTTPRequestHandler) -> str:
     return urlparse(handler.path).path
 
 
+def _ipc_authorized(handler: BaseHTTPRequestHandler, path: str) -> bool:
+    try:
+        check_rest_request(
+            path=path,
+            headers=dict(handler.headers.items()),
+            enabled=IPC_AUTH_ENABLED,
+            expected_token=IPC_TOKEN,
+        )
+        return True
+    except IPCAuthError:
+        _json_response(
+            handler,
+            401,
+            {"error": "unauthorized", "reason": "missing_or_invalid_token"},
+        )
+        return False
+
+
 def _query(handler: BaseHTTPRequestHandler) -> dict[str, list[str]]:
     return parse_qs(urlparse(handler.path).query)
 
@@ -205,12 +229,7 @@ def _hash_user(user: str) -> str:
 
 
 def _redact_text(value: Any, max_len: int = 4000) -> str:
-    text = str(value or "")[:max_len]
-    for pattern in SECRET_PATTERNS:
-        text = pattern.sub(
-            lambda m: f"{m.group(1)}[REDACTED]" if len(m.groups()) >= 2 else "[REDACTED]", text
-        )
-    return text
+    return redact_text(value)[:max_len]
 
 
 def _dataset_settings() -> dict[str, Any]:
@@ -230,7 +249,14 @@ def _dataset_settings() -> dict[str, Any]:
         return defaults
     if not isinstance(data, dict):
         return defaults
-    return {**defaults, **data}
+    merged = {**defaults, **data}
+    merged["enabled"] = (
+        DATASET_ENABLED
+        and bool(merged.get("enabled"))
+        and beta_consent.is_enabled()
+    )
+    merged["store_images"] = bool(merged["enabled"] and merged.get("store_images"))
+    return merged
 
 
 def _beta_status_payload() -> dict[str, Any]:
@@ -264,8 +290,13 @@ def _beta_status_payload() -> dict[str, Any]:
 
 def _save_dataset_settings(settings: dict[str, Any]) -> dict[str, Any]:
     clean = {
-        "enabled": bool(settings.get("enabled", True)),
-        "store_images": bool(settings.get("store_images", False)),
+        "enabled": (
+            DATASET_ENABLED
+            and bool(settings.get("enabled", False))
+            and beta_consent.is_enabled()
+        ),
+        "store_images": bool(settings.get("store_images", False))
+        and beta_consent.is_enabled(),
         "redact_text": bool(settings.get("redact_text", True)),
         "schema_version": "AgentMax.training.v1",
     }
@@ -288,13 +319,13 @@ def _dataset_count() -> int:
 
 def _append_dataset_example(example: dict[str, Any]) -> bool:
     settings = _dataset_settings()
-    if not settings.get("enabled", True):
+    if not settings.get("enabled", False) or not beta_consent.is_enabled():
         return False
     record = {
         "schema_version": settings["schema_version"],
         "id": f"ex-{uuid.uuid4().hex}",
         "created_at": _now_iso(),
-        **example,
+        **redact_record(example),
     }
     with DATASET_LOCK:
         DATASET_DIR.mkdir(parents=True, exist_ok=True)
@@ -389,7 +420,7 @@ def _detect_image(raw: bytes, mime_hint: str = "", name: str = "") -> dict[str, 
         "stored": False,
     }
     settings = _dataset_settings()
-    if settings.get("enabled", True) and settings.get("store_images", False) and kind != "unknown":
+    if settings.get("enabled", False) and settings.get("store_images", False) and kind != "unknown":
         DATASET_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
         path = DATASET_IMAGE_DIR / f"{digest}.{ext}"
         if not path.exists():
@@ -638,7 +669,7 @@ def _runtime_connectors() -> dict[str, Any]:
         {
             "id": "dataset",
             "name": "AgentMax Dataset Logger",
-            "status": "online" if _dataset_settings().get("enabled", True) else "paused",
+            "status": "online" if _dataset_settings().get("enabled", False) else "paused",
             "endpoint": str(DATASET_FILE),
             "capabilities": ["redaction", "jsonl_examples", "vision_metadata"],
             "risk_level": "low",
@@ -835,7 +866,7 @@ def _thinking_core(
         "token_usage": charge,
         "token_balance": snapshot.get("balance", 0),
         "vision": {"detected": bool(image_meta), "images": image_meta},
-        "dataset": {"enabled": _dataset_settings().get("enabled", True), "path": str(DATASET_FILE)},
+        "dataset": {"enabled": _dataset_settings().get("enabled", False), "path": str(DATASET_FILE)},
         "suggested_tools": ["test_server", "local_api", "token_ledger", "vision_metadata"],
     }
 
@@ -893,12 +924,6 @@ class AgentMaxTestHandler(BaseHTTPRequestHandler):
         path = _path(self)
 
         if path in {"/health", "/api/health"}:
-            ipc_auth = os.environ.get("AGENTMAX_IPC_AUTH", "0").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }
             _json_response(
                 self,
                 200,
@@ -907,10 +932,24 @@ class AgentMaxTestHandler(BaseHTTPRequestHandler):
                     "status": "ok",
                     "version": APP_VERSION,
                     "backend": BACKEND_ID,
-                    "ipc_auth_enabled": ipc_auth,
+                    "ipc_auth_enabled": IPC_AUTH_ENABLED,
                     "tester_id": _local_tester_id(),
+                    "runtime_mode": RUNTIME_MODE,
+                    "limited": LIMITED_MODE,
+                    "fallback_reason": os.environ.get("AGENTMAX_FALLBACK_REASON"),
+                    "capabilities": {
+                        "chat": True,
+                        "vision_metadata": True,
+                        "screen_vision": BETA_CONFIG.feature_flags.screen_vision,
+                        "mouse_control": False,
+                        "keyboard_control": False,
+                        "terminal": False,
+                        "file_actions": False,
+                    },
                 },
             )
+            return
+        if not _ipc_authorized(self, path):
             return
 
         if path == "/api/tokens":
@@ -1110,6 +1149,8 @@ class AgentMaxTestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = _path(self)
+        if not _ipc_authorized(self, path):
+            return
         data = _read_json(self)
 
         if path == "/api/feedback":
@@ -1650,10 +1691,10 @@ def main() -> int:
         f"[OK] Dataset local: {dataset_snapshot['path']} (enabled={dataset_snapshot['enabled']}, store_images={dataset_snapshot['store_images']})",
         flush=True,
     )
-    if PRODUCT_MODE:
-        print("[OK] AgentMax runtime listo en :7790", flush=True)
-    else:
-        print("[OK] Primera corrida lista. Abre la UI en http://127.0.0.1:1420", flush=True)
+    print(
+        f"[OK] AgentMax server mode={RUNTIME_MODE} backend={BACKEND_ID} limited={LIMITED_MODE}",
+        flush=True,
+    )
     stop.wait()
 
     for server in servers:
@@ -1663,4 +1704,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if not os.environ.get("AGENTMAX_SERVER_WRAPPER"):
+        print(
+            "[DEPRECATED] Use scripts/agentmax_beta_server.py or "
+            "scripts/agentmax_dev_server.py explicitly.",
+            flush=True,
+        )
     raise SystemExit(main())

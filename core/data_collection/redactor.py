@@ -21,6 +21,22 @@ PRIVATE_IP_RE = re.compile(
 WINDOWS_USER_PATH_RE = re.compile(r"(?i)\b[A-Z]:\\Users\\[^\\\s]+")
 POSIX_USER_PATH_RE = re.compile(r"(?i)(/home/[^/\s]+|/Users/[^/\s]+)")
 MACHINE_RE = re.compile(r"(?i)\b(machine|computer|hostname)\s*[:=]\s*[A-Za-z0-9_.-]{2,}")
+PRIVATE_KEY_RE = re.compile(
+    r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----.*?"
+    r"-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----",
+    re.DOTALL,
+)
+ENV_ASSIGNMENT_RE = re.compile(
+    r"(?im)^\s*(?:export\s+|\$env:)?"
+    r"([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY)[A-Z0-9_]*)"
+    r"\s*[:=]\s*[^\r\n]+"
+)
+BROWSER_PROFILE_RE = re.compile(
+    r"(?i)(?:[A-Z]:\\Users\\[^\\\s]+\\AppData\\Local\\"
+    r"(?:Google\\Chrome|Microsoft\\Edge|BraveSoftware\\Brave-Browser)\\User Data"
+    r"|[A-Z]:\\Users\\[^\\\s]+\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles"
+    r"|/(?:home|Users)/[^/\s]+/Library/Application Support/(?:Google/Chrome|Firefox))"
+)
 
 
 def redact_text(value: Any) -> str:
@@ -36,6 +52,9 @@ def redact_text(value: Any) -> str:
     text = WINDOWS_USER_PATH_RE.sub("<USER_PATH>", text)
     text = POSIX_USER_PATH_RE.sub("<USER_PATH>", text)
     text = MACHINE_RE.sub(lambda m: f"{m.group(1)}=<MACHINE>", text)
+    text = PRIVATE_KEY_RE.sub("<PRIVATE_KEY>", text)
+    text = ENV_ASSIGNMENT_RE.sub(lambda m: f"{m.group(1)}=<SECRET>", text)
+    text = BROWSER_PROFILE_RE.sub("<BROWSER_PROFILE>", text)
     return text
 
 
@@ -62,6 +81,10 @@ def redact_record(record: Any) -> Any:
                 "set-cookie",
                 "jwt",
                 "password",
+                "screenshot",
+                "image",
+                "private_key",
+                "browser_profile",
             }:
                 out[key] = "<SECRET>"
             else:

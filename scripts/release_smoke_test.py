@@ -52,13 +52,28 @@ def main() -> int:
         details["health"] = health
         tester_id = str(health.get("tester_id", ""))
         checks["no_hardcoded_agust_user"] = "agust" not in tester_id.lower()
-        checks["product_backend_id"] = health.get("backend") in {"agentmax", "agentpilot_test_server"}
+        expected_mode = os.environ.get("AGENTMAX_EXPECT_RUNTIME_MODE", "full")
+        checks["runtime_mode"] = health.get("runtime_mode") == expected_mode
+        if expected_mode == "full":
+            checks["product_backend_id"] = health.get("backend") == "agentmax"
+            checks["runtime_not_limited"] = health.get("limited") is False
+        else:
+            checks["product_backend_id"] = health.get("backend") == f"agentmax_{expected_mode}"
+            checks["runtime_not_limited"] = health.get("limited") is True
         checks["product_version"] = health.get("version") not in (None, "")
         details["tester_id"] = tester_id
         if health.get("ipc_auth_enabled"):
-            local_app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-            token_path = local_app_data / "AgentMax" / "ipc_token"
-            AUTH_TOKEN = token_path.read_text(encoding="utf-8").strip() if token_path.exists() else None
+            AUTH_TOKEN = os.environ.get("AGENTMAX_IPC_TOKEN", "").strip() or None
+            if not AUTH_TOKEN:
+                local_app_data = Path(
+                    os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")
+                )
+                token_path = local_app_data / "AgentMax" / "ipc_token"
+                AUTH_TOKEN = (
+                    token_path.read_text(encoding="utf-8").strip()
+                    if token_path.exists()
+                    else None
+                )
             checks["ipc_token_available"] = bool(AUTH_TOKEN)
 
             unauthorized = urllib.request.Request(f"{API_BASE}/api/status", method="GET")

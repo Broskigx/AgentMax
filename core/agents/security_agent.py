@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from core.agents.base_agent import AgentCapability, AgentContext, BaseAgent
+from core.security.policy import SecurityPolicy
 
 if TYPE_CHECKING:
     from core.agents.supervisor import TaskRequest
@@ -117,6 +118,7 @@ class SecurityAgent(BaseAgent):
         self._action_times: deque[float] = deque()
         self._violation_count = 0
         self._allowed_apps: list[str] = []  # empty = no fencing (allow all)
+        self._policy = SecurityPolicy(getattr(ctx.config.security, "allowed_fs_dirs", []))
 
     @property
     def name(self) -> str:
@@ -133,21 +135,9 @@ class SecurityAgent(BaseAgent):
         Returns (is_safe, reason_string).
         If is_safe is False, the command should be blocked.
         """
-        cmd_lower = command.lower()
-
-        # Check dangerous (always block)
         for pattern in DANGEROUS_COMMANDS:
-            if pattern.search(cmd_lower):
+            if pattern.search(command):
                 return False, f"Dangerous command blocked: matches '{pattern.pattern[:50]}'"
-
-        # Check high risk (requires confirmation)
-        for pattern in HIGH_RISK_PATTERNS:
-            if pattern.search(cmd_lower):
-                return (
-                    True,
-                    f"High-risk command detected: '{pattern.pattern[:50]}' -- requires confirmation",
-                )
-
         return True, ""
 
     def assess_shell_risk_level(self, command: str) -> str:
@@ -291,8 +281,19 @@ class SecurityAgent(BaseAgent):
             )
             return False
 
-        except Exception:
-            return True  # if we can't check, allow (fail-open for automation stability)
+        except Exception as exc:
+            log.warning("security.scope_check_failed", error=str(exc))
+            await self.emit(
+                "security.scope_violation",
+                {
+                    "window": "",
+                    "process": "",
+                    "allowed": self._allowed_apps,
+                    "reason": "scope_check_unavailable",
+                },
+                priority=1,
+            )
+            return False
 
     async def _record_violation(self, task_id: str, reason: str) -> None:
         self._violation_count += 1

@@ -275,6 +275,45 @@ class HumanInputSimulator:
         """Right-click at (x, y)."""
         self.click(x, y, button="right")
 
+    def mouse_down(self, button: str = "left") -> None:
+        self._mouse_press(button)
+
+    def mouse_up(self, button: str = "left") -> None:
+        self._mouse_release(button)
+
+    def drag_path(
+        self,
+        points: list[tuple[int, int]] | list[list[int]],
+        *,
+        button: str = "left",
+        duration_ms: int = 500,
+    ) -> None:
+        if len(points) < 2:
+            raise ValueError("drag_path requires at least two points")
+        normalized = [self._clamp(int(point[0]), int(point[1])) for point in points]
+        interpolated: list[tuple[int, int]] = [normalized[0]]
+        for start, end in zip(normalized, normalized[1:]):
+            distance = math.hypot(end[0] - start[0], end[1] - start[1])
+            steps = max(2, int(distance / 16))
+            for index in range(1, steps + 1):
+                ratio = index / steps
+                interpolated.append(
+                    (
+                        round(start[0] + (end[0] - start[0]) * ratio),
+                        round(start[1] + (end[1] - start[1]) * ratio),
+                    )
+                )
+        self.move_to(*normalized[0])
+        self.mouse_down(button)
+        try:
+            delay = max(0.001, duration_ms / 1000.0 / max(1, len(interpolated) - 1))
+            for x, y in interpolated[1:]:
+                self._raw_move(x, y)
+                time.sleep(delay)
+        finally:
+            self.mouse_up(button)
+        self._last_x, self._last_y = normalized[-1]
+
     def drag_to(
         self,
         x0: int,
@@ -290,7 +329,7 @@ class HumanInputSimulator:
         """
         self.move_to(x0, y0)
         time.sleep(random.gauss(0.05, 0.01))
-        self._mouse_press(button)
+        self.mouse_down(button)
         time.sleep(random.gauss(0.03, 0.005))
 
         x1, y1 = self._clamp(x1, y1)
@@ -313,7 +352,7 @@ class HumanInputSimulator:
 
         self._raw_move(x1, y1)
         time.sleep(random.gauss(0.03, 0.005))
-        self._mouse_release(button)
+        self.mouse_up(button)
         self._last_x, self._last_y = x1, y1
 
     def scroll(

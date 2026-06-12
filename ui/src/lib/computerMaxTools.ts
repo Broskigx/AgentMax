@@ -1,8 +1,8 @@
 import {
   getDesktopMousePosition,
   getDesktopScreenInfo,
+  getDesktopToolStatus,
   moveDesktopMouse,
-  resumeDesktopAutomation,
   takeDesktopScreenshot,
   type ScreenInfo,
 } from './desktopAutomationService';
@@ -79,15 +79,14 @@ export function parseCoordinates(text: string): ScreenPoint | null {
   return null;
 }
 
-export function resolveMouseTarget(command: string, screen: ScreenInfo): ScreenPoint {
+export function resolveMouseTarget(command: string, screen: ScreenInfo): ScreenPoint | null {
   // Pure coord resolution for OpenAI Computer Use style. No word heuristics.
   // Model must provide exact x,y from screenshot via vision.
   const explicit = parseCoordinates(command);
   if (explicit) {
     return clampPoint(explicit, screen);
   }
-  // Safe center fallback only.
-  return clampPoint({ x: Math.round(screen.width / 2), y: Math.round(screen.height / 2) }, screen);
+  return null;
 }
 
 function clampPoint(point: ScreenPoint, screen: ScreenInfo): ScreenPoint {
@@ -113,7 +112,17 @@ export async function fetchScreenInfo(token: string): Promise<ScreenInfo> {
 }
 
 export async function ensureAutomationReady(token: string) {
-  await resumeDesktopAutomation(token).catch(() => {});
+  const status = await getDesktopToolStatus(token);
+  if (!status.success || !status.data) {
+    throw new Error(status.error || 'No se pudo verificar el estado de automatizacion.');
+  }
+  if (status.data.intervention.paused) {
+    throw new Error(
+      `La automatizacion esta pausada por intervencion del usuario: ${
+        status.data.intervention.reason || 'user_input'
+      }`,
+    );
+  }
 }
 
 export async function runMouseMoveTool(
@@ -125,6 +134,9 @@ export async function runMouseMoveTool(
   await ensureAutomationReady(token);
 
   const target = resolveMouseTarget(command, screen);
+  if (!target) {
+    throw new Error('La herramienta de mouse requiere coordenadas x,y verificadas por vision.');
+  }
   const current = await getDesktopMousePosition(token);
   const from = current.success && current.data
     ? current.data

@@ -303,6 +303,7 @@ interface ComputerControlRequest {
   reason: string;
   command: string;
   assistantMessageId: string;
+  requestedPermissions: string[];
 }
 
 interface AgentStore {
@@ -423,9 +424,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     });
   },
 
-  modMouse: true,
-  modKeyboard: true,
-  modScreen: true,
+  modMouse: false,
+  modKeyboard: false,
+  modScreen: false,
   toggleModule: async (mod) => {
     const { ipcToken } = get();
     if (!ipcToken) return;
@@ -568,7 +569,16 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       set({ isTyping: false, agentState: 'idle' });
     }
 
-    if (safeAttachments.length === 0 && shouldStartAutonomousTask(cleanText) && !get().computerControlActive) {
+    const localMouseTask = isMouseCommand(cleanText);
+    const localScreenshotTask = isScreenshotCommand(cleanText);
+    if (
+      safeAttachments.length === 0
+      && (localMouseTask || localScreenshotTask)
+      && !get().computerControlActive
+    ) {
+      const requestedPermissions = localMouseTask
+        ? ['pantalla', 'mouse']
+        : ['pantalla'];
       const userMsg: ChatMessage = {
         id: newMessageId('u'),
         role: 'user',
@@ -607,7 +617,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           computerControlRequest: {
             assistantMessageId: aiId,
             command: cleanText,
-            reason: 'Esta tarea puede abrir aplicaciones, mover el mouse, escribir texto, consultar la pantalla o ejecutar herramientas del sistema. ComputerMax necesita tu autorización para actuar fuera del chat.',
+            requestedPermissions,
+            reason: `Esta tarea necesita ${requestedPermissions.join(' y ')}. No se solicitaran teclado, shell, filesystem ni otros permisos.`,
           },
         };
       });
@@ -973,12 +984,19 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       }
       controlToken = token;
       const currentPermissions = await getDesktopPermissions(token);
-      previousPermissions = currentPermissions.success && currentPermissions.data ? currentPermissions.data : null;
+      if (!currentPermissions.success || !currentPermissions.data) {
+        throw new Error(
+          currentPermissions.error || 'No se pudo leer el estado previo de permisos.',
+        );
+      }
+      previousPermissions = currentPermissions.data;
+      const needsMouse = isMouseCommand(request.command);
+      const needsScreen = isScreenshotCommand(request.command) || needsMouse;
       const granted = await setDesktopPermissions(token, {
-        screenCaptureEnabled: true,
-        automationEnabled: true,
-        mouseControlEnabled: true,
-        keyboardControlEnabled: true,
+        screenCaptureEnabled: needsScreen,
+        automationEnabled: needsMouse,
+        mouseControlEnabled: needsMouse,
+        keyboardControlEnabled: false,
       });
       if (!granted.success) {
         throw new Error(granted.error || 'No se pudieron activar los permisos de automatizacion.');
@@ -1000,9 +1018,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         controller.signal,
         set,
       );
-      if (controlToken && previousPermissions) {
-        await setDesktopPermissions(controlToken, previousPermissions).catch(() => {});
-      }
       set((s) => ({
         currentTaskId: result.taskId || s.currentTaskId,
         chatAbortController: null,
@@ -1016,9 +1031,6 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         pendingComputerControlMessageId: null,
       }));
     } catch (error: any) {
-      if (controlToken && previousPermissions) {
-        await setDesktopPermissions(controlToken, previousPermissions).catch(() => {});
-      }
       const messageText = `No pude iniciar el control de la computadora.\n\n${error?.message || String(error)}`;
       set((s) => {
         const next = s.messages.map((message) => (
@@ -1045,6 +1057,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           isMinimized: false,
         };
       });
+    } finally {
+      if (controlToken && previousPermissions) {
+        await setDesktopPermissions(controlToken, previousPermissions).catch(() => {});
+      }
     }
   },
   denyComputerControl: () => {
@@ -1486,7 +1502,7 @@ async function executeLocalComputerTask(
     });
     addSystemMsg(`**ComputerMax:** mouse movido a \`${move.finalPoint.x}, ${move.finalPoint.y}\`.`);
     return {
-      content: `Listo. ComputerMax movió el mouse a (${move.finalPoint.x}, ${move.finalPoint.y}). Puedes pedir posiciones como "centro", "esquina superior derecha" o coordenadas x=500, y=300.`,
+      content: `Listo. ComputerMax movió el mouse a (${move.finalPoint.x}, ${move.finalPoint.y}). Las acciones de mouse requieren coordenadas verificadas, por ejemplo x=500, y=300.`,
       source: 'local',
       taskId,
       thinkingCore: localThinkingCore(command, checklist),
@@ -1508,7 +1524,7 @@ async function executeLocalComputerTask(
 
   checklist.push({ id: 'result', label: 'No hay herramienta local segura para esa acción', status: 'blocked' });
   return {
-    content: 'No ejecuté esa acción porque aún no tengo una herramienta local segura para hacerla. Prueba: "mueve el mouse al centro" o "captura pantalla".',
+    content: 'No ejecuté esa acción porque aún no tengo una herramienta local segura para hacerla. Prueba: "mueve el mouse a x=500, y=300" o "captura pantalla".',
     source: 'local',
     taskId,
     thinkingCore: localThinkingCore(command, checklist),

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import {
   clickDesktopMouse,
+  dragDesktopMouse,
   getDesktopMousePosition,
   getDesktopToolStatus,
   moveDesktopMouse,
@@ -51,11 +52,14 @@ export function ToolDiagnosticsPanel({ ipcToken }: Props) {
   const [typedValue, setTypedValue] = useState('');
   const testInputRef = useRef<HTMLInputElement>(null);
   const clickPadRef = useRef<HTMLButtonElement>(null);
+  const dragPadRef = useRef<HTMLButtonElement>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (preserveResult = false) => {
     if (!ipcToken) return;
     const result = await getDesktopToolStatus(ipcToken);
-    setLastResult(result as DesktopToolResult<unknown>);
+    if (!preserveResult) {
+      setLastResult(result as DesktopToolResult<unknown>);
+    }
     if (result.success && result.data) setStatus(result.data);
   }, [ipcToken]);
 
@@ -68,7 +72,7 @@ export function ToolDiagnosticsPanel({ ipcToken }: Props) {
     try {
       const result = await action();
       setLastResult(result as DesktopToolResult<unknown>);
-      await refresh();
+      await refresh(true);
       return result;
     } catch (error) {
       setLastResult({
@@ -86,9 +90,8 @@ export function ToolDiagnosticsPanel({ ipcToken }: Props) {
 
   const patchPermission = useCallback(async (patch: PermissionPatch) => {
     if (!ipcToken) return;
-    const result = await run('permissions', () => setDesktopPermissions(ipcToken, patch));
-    if (result?.success) await refresh();
-  }, [ipcToken, refresh, run]);
+    await run('permissions', () => setDesktopPermissions(ipcToken, patch));
+  }, [ipcToken, run]);
 
   const testScreenshot = useCallback(async () => {
     if (!ipcToken) return;
@@ -117,6 +120,15 @@ export function ToolDiagnosticsPanel({ ipcToken }: Props) {
     const x = Math.round(window.screenX + rect.left + rect.width / 2);
     const y = Math.round(window.screenY + rect.top + rect.height / 2);
     await run('click', () => clickDesktopMouse(ipcToken, 'left', 1, x, y));
+  }, [ipcToken, run]);
+
+  const testDrag = useCallback(async () => {
+    if (!ipcToken || !dragPadRef.current) return;
+    const rect = dragPadRef.current.getBoundingClientRect();
+    const fromX = Math.round(window.screenX + rect.left + rect.width * 0.35);
+    const toX = Math.round(window.screenX + rect.left + rect.width * 0.65);
+    const y = Math.round(window.screenY + rect.top + rect.height / 2);
+    await run('drag', () => dragDesktopMouse(ipcToken, fromX, y, toX, y, 350));
   }, [ipcToken, run]);
 
   const testType = useCallback(async () => {
@@ -223,6 +235,10 @@ export function ToolDiagnosticsPanel({ ipcToken }: Props) {
           <Crosshair size={15} />
           Test Click
         </button>
+        <button ref={dragPadRef} className="pilot-secondary-button" disabled={!canUseNative || busy === 'drag'} onClick={testDrag}>
+          <MousePointer2 size={15} />
+          Test Drag
+        </button>
         <button className="pilot-secondary-button" disabled={!canUseNative || busy === 'type'} onClick={testType}>
           <Type size={15} />
           Test Type
@@ -239,7 +255,7 @@ export function ToolDiagnosticsPanel({ ipcToken }: Props) {
           <Play size={15} />
           Resume
         </button>
-        <button className="pilot-secondary-button" disabled={!canUseNative || busy === 'refresh'} onClick={refresh}>
+        <button className="pilot-secondary-button" disabled={!canUseNative || busy === 'refresh'} onClick={() => void refresh()}>
           <RefreshCcw size={15} />
           Refresh
         </button>

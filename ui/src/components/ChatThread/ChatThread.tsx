@@ -110,7 +110,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 }
 
 const SUGGESTIONS = [
-  'Mueve el mouse al centro de la pantalla',
+  'Mueve el mouse a x=500, y=300',
   'Captura pantalla',
   'Que puedes hacer por mi?',
   'Ayudame con una tarea en mi PC',

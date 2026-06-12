@@ -38,9 +38,9 @@ const STEPS: OnboardingStep[] = [
     title: 'ComputerMax bajo supervisión',
     description: 'AgentMax puede observar tu equipo y activar ComputerMax solo con tu permiso.',
     details: [
-      'ComputerMax controla mouse, teclado y pantalla cuando lo apruebas',
+      'Pantalla, mouse y teclado se autorizan por separado y solo para la tarea',
       'Screenshot con vista previa antes de enviarse al agente',
-      'CMD / PowerShell solo lectura por defecto',
+      'CMD / PowerShell y filesystem estan deshabilitados por defecto',
       'Acciones sensibles siempre piden confirmación',
     ],
     icon: ShieldCheck,

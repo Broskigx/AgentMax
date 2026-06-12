@@ -1,66 +1,61 @@
-﻿# AgentMax Beta Readiness
+# AgentMax Closed-Beta Readiness
 
-Estado objetivo: **Technical Beta Candidate**, no producción.
+Target state: technical closed beta, not production.
 
-## Qué Incluye La Beta
+## Runtime Modes
 
-- Chat principal profesional con panel lateral y panel de inspección.
-- Panel visible de `Agent Thinking` con estados seguros, sin chain-of-thought crudo.
-- Checklist operativo por tarea.
-- Tokens/créditos locales con planes `Free`, `Starter`, `Pro`, `Local`.
-- Screenshot real por Tauri cuando la app corre como desktop.
-- Registry visible de tools con disponibilidad, riesgo y aprobación.
-- Stop Agent y estados de `Awaiting approval`, `Screenshot required`, `User control`.
-- Sanitizer de salida para `<think>` en frontend y backend Python.
-- Logs/redacción y scripts para convertir ejemplos approved en SFT.
-- Rescue Mode externo para diagnóstico cuando la UI no arranca.
+- Full runtime: `python scripts/agentmax_server.py`
+- Explicit limited fallback: `python scripts/agentmax_beta_server.py`
+- Explicit development server: `python scripts/agentmax_dev_server.py`
 
-## Cómo Correr
+`/health` reports `backend`, `runtime_mode`, `limited`, `fallback_reason`, and
+`capabilities`. The UI must display limited or offline state explicitly.
+
+## Configuration
+
+Precedence is:
+
+1. Conservative closed-beta defaults.
+2. `agentmax.config.json`.
+3. Optional local `beta_config.json`.
+4. `AGENTMAX_*` environment variables.
+
+Configuration files are strict JSON. Invalid JSON aborts the full runtime.
+Telemetry, datasets, shell, filesystem, mouse, and keyboard are off by default.
+IPC authentication is on by default.
+
+## Desktop Safety
+
+- Screen, mouse, and keyboard permissions are separate and task-scoped.
+- Sensitive or high-risk actions require confirmation and stronger
+  verification.
+- Physical actions are serialized from observation through recovery.
+- Manual input pauses automation. Resume requires active authorization and two
+  seconds without user input.
+- Shell/filesystem policy protects secrets, browser profiles, credentials, and
+  `.git`, and caps execution at 60 seconds.
+- Screenshot persistence and dataset collection require explicit opt-in.
+
+## Verification
+
+Run from the repository root unless a working directory is shown:
 
 ```powershell
-cd C:\path\to\AgentMax
-python scripts\AgentMax_test_server.py
+python -m pytest -q
+python scripts/check_repo_safety.py
+python scripts/release_smoke_test.py
+python scripts/beta_cli.py smoke-test --output-dir diagnostics/smoke
+
 cd ui
-npm run dev
+npm run test
+npm run build
+
+cd src-tauri
+cargo test --lib
+cargo check
 ```
 
-Para app Tauri:
+The release smoke requires a running server. Force `AGENTMAX_SERVER_MODE=runtime`
+when validating the full product so fallback cannot satisfy the check.
 
-```powershell
-cd C:\path\to\AgentMax\ui
-npm run tauri dev
-```
-
-## Checklist De Beta
-
-- [x] UI build pasa con `npm run build`.
-- [x] Tokens frontend persistentes y reset diario.
-- [x] Tools registry visible con stubs seguros.
-- [x] Screenshot integrado por Tauri y fallback unavailable.
-- [x] Sanitizer `<think>` implementado.
-- [x] Supervisor Python testeable.
-- [x] Scripts de logs/dataset/redacción.
-- [x] `cargo check` validado en este entorno.
-- [x] `tauri build` validado en este entorno.
-- [ ] Conectar modelo real `unsloth/Qwen3-VL-8B-Thinking` + adapter V2.1.
-- [ ] Validar OCR real si se decide instalar Tesseract.
-
-## Validación Ejecutada
-
-- `npm run build`: pasa.
-- `cargo check`: pasa con warnings de funciones/constantes Rust no usadas.
-- `npm run tauri build`: pasa; genera MSI y NSIS.
-- `python -m pytest tests\test_AgentMax_beta_services.py tests\test_tools_backend.py`: pasa.
-- `python -m pytest tests\test_security.py`: pasa durante la corrida crítica.
-- `python -m pytest`: bloqueado en colección porque falta `email_validator` instalado en el entorno local. La dependencia ya está declarada en `backend/requirements.txt` y en el extra `server` del `pyproject.toml`.
-
-## Cómo Revertir
-
-Los cambios están en la rama `codex/AgentMax-technical-beta-candidate`. Para revisar o descartar sin tocar otras ramas:
-
-```powershell
-git diff
-git switch main
-```
-
-No se hizo `git reset`, no se borraron adapters, checkpoints ni módulos existentes.
+Current verified results are recorded in `docs/AUDIT_BETA_HARDENING.md`.

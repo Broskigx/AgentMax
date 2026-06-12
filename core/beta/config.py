@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from core.feature_flags import FeatureFlags, load_config_profile
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -46,33 +48,6 @@ def _read_json(path: Path, errors: list[str] | None = None) -> dict[str, Any]:
 
 
 @dataclass
-class FeatureFlags:
-    mouse_control: bool = False
-    keyboard_control: bool = False
-    screen_vision: bool = True
-    terminal: bool = False
-    file_actions: bool = False
-    cloud_agentpilot: bool = False
-    local_agentpilot: bool = True
-    telemetry: bool = False
-    crash_reports: bool = False
-    redis_queue: bool = False
-    sqlite_storage: bool = True
-
-    @classmethod
-    def from_mapping(cls, data: dict[str, Any] | None) -> "FeatureFlags":
-        flags = cls()
-        for key, value in (data or {}).items():
-            if hasattr(flags, key):
-                setattr(flags, key, bool(value))
-        for key in list(asdict(flags)):
-            env_key = f"AGENTMAX_FEATURE_{key.upper()}"
-            if env_key in os.environ:
-                setattr(flags, key, _truthy(os.environ[env_key]))
-        return flags
-
-
-@dataclass
 class BetaConfig:
     app_name: str = "AgentMax"
     app_version: str = "0.1.0-beta.1"
@@ -88,6 +63,7 @@ class BetaConfig:
     sqlite_path: str = "data/agentmax_beta.sqlite"
     redis_url: str = "redis://localhost:6379/0"
     telemetry_enabled: bool = False
+    ipc_auth_enabled: bool = True
     sentry_dsn: str | None = None
     agentpilot_endpoint: str = "http://127.0.0.1:1235/v1/chat/completions"
     local_model_endpoint: str = "http://127.0.0.1:1234"
@@ -101,7 +77,9 @@ class BetaConfig:
         env = os.environ.get("AGENTMAX_DATA_DIR")
         if env:
             return Path(env)
-        # Fallback for dev / non-packaged: ~/.agentmax or local data
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if os.name == "nt" and local_app_data:
+            return Path(local_app_data) / "AgentMax"
         return Path.home() / ".agentmax"
 
     @property
@@ -119,19 +97,14 @@ class BetaConfig:
         data["feature_flags"] = asdict(self.feature_flags)
         if data.get("sentry_dsn"):
             data["sentry_dsn"] = "<SECRET>"
-        data["ipc_auth_enabled"] = _truthy(os.environ.get("AGENTMAX_IPC_AUTH", "1"))
         return data
 
 
 def load_beta_config(root: Path | None = None) -> BetaConfig:
     base = root or ROOT
-    config_errors: list[str] = []
-    merged: dict[str, Any] = {}
-    merged.update(_read_json(base / "agentmax.config.json", config_errors))
-    merged.update(_read_json(base / "beta_config.json", config_errors))
-
-    flags = FeatureFlags.from_mapping(merged.get("feature_flags"))
-    config = BetaConfig(feature_flags=flags, config_errors=config_errors)
+    profile = load_config_profile(base)
+    merged = dict(profile.data)
+    config = BetaConfig(feature_flags=profile.feature_flags, config_errors=profile.errors)
 
     # --- User-adaptive paths (no hardcoded developer paths) ---
     # Tauri sets AGENTMAX_DATA_DIR on every launch using proper app_data_dir().
@@ -194,6 +167,11 @@ def load_beta_config(root: Path | None = None) -> BetaConfig:
         config.telemetry_enabled = _truthy(os.environ["AGENTMAX_TELEMETRY_ENABLED"])
     elif "telemetry_enabled" in merged:
         config.telemetry_enabled = bool(merged["telemetry_enabled"])
+
+    if "AGENTMAX_IPC_AUTH" in os.environ:
+        config.ipc_auth_enabled = _truthy(os.environ["AGENTMAX_IPC_AUTH"])
+    elif "ipc_auth_enabled" in merged:
+        config.ipc_auth_enabled = bool(merged["ipc_auth_enabled"])
 
     return config
 

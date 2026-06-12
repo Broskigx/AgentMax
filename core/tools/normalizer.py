@@ -31,7 +31,7 @@ class ToolResultNormalizer:
             request_id=request.request_id,
             task_id=request.task_id,
             status=ToolStatus.COMPLETED if action.success else ToolStatus.FAILED,
-            error_code=None if action.success else "tool.action_failed",
+            error_code=None if action.success else (action.error_code or "tool.action_failed"),
             attempts=attempts,
             fallback_used=fallback_used,
             completed_at=None,

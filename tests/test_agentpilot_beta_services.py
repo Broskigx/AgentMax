@@ -79,9 +79,10 @@ def test_token_manager_enforces_daily_limit() -> None:
 
 
 def test_redactor_masks_sensitive_values() -> None:
+    # Placeholder secret fixture used only to verify redaction.
     text = (
         "email test@example.com token=abc123456 C:\\Users\\agust\\secret 192.168.1.7 "
-        "sk-abcdefghijklmnopqrstuvwxyz Authorization: Bearer abcdefghijklmnop "
+        "sk-placeholder-abcdefghijklmnopqrstuvwxyz Authorization: Bearer abcdefghijklmnop "
         "cookie=sessionid=abcdefghi "
         "eyJhbGciOiJIUzI1NiIsInR5cCI.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue"
     )
@@ -92,7 +93,7 @@ def test_redactor_masks_sensitive_values() -> None:
     assert "<SECRET>" in redacted
     assert "<USER_PATH>" in redacted
     assert "<PRIVATE_IP>" in redacted
-    assert "sk-abcdefghijklmnopqrstuvwxyz" not in redacted
+    assert "sk-placeholder-abcdefghijklmnopqrstuvwxyz" not in redacted
     assert "Authorization:" not in redacted
     assert "sessionid=abcdefghi" not in redacted
     assert "<JWT>" in redacted
