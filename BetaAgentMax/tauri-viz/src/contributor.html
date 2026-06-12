@@ -1,0 +1,95 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentMax - Contribuir GPU</title>
+<link rel="stylesheet" href="contributor.css">
+<style>
+.zt-badge {
+  display:inline-flex;align-items:center;gap:4px;
+  background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);
+  color:#22c55e;font-size:0.72rem;font-weight:600;
+  padding:3px 10px;border-radius:20px;white-space:nowrap;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <img src="" class="logo">
+    <h1>AgentMax</h1>
+    <span id="zt-badge-contrib" class="zt-badge" style="display:none">🌐 <span id="zt-ip-contrib">-</span></span>
+    <div id="status-bar">
+      <span id="status-dot" class="dot stopped"></span>
+      <span id="status-text">Esperando</span>
+    </div>
+  </header>
+
+  <!-- GPU info card -->
+  <div class="card" id="gpu-card">
+    <h2>Tu GPU</h2>
+    <div id="gpu-info" class="gpu-detecting">Detectando hardware...</div>
+    <div class="gpu-specs" id="gpu-specs" style="display:none">
+      <div class="spec"><span>GPU:</span><span id="gpu-name">-</span></div>
+      <div class="spec"><span>VRAM:</span><span id="gpu-vram">-</span></div>
+      <div class="spec"><span>Estado:</span><span id="gpu-state" class="idle">Inactivo</span></div>
+    </div>
+  </div>
+
+  <!-- Connect form -->
+  <div class="card" id="connect-card">
+    <h2>Conectar al Coordinador</h2>
+    <div id="zt-info-contrib" style="display:none;margin-bottom:8px;padding:6px 10px;background:#0a0a18;border-radius:6px;font-size:0.78rem;color:#22c55e">
+      🌐 Tu ZeroTier: <span id="zt-my-ip" style="font-weight:600">-</span>
+      <div style="color:#666;font-size:0.7rem;margin-top:2px">Esta es tu IP virtual. Dale esta IP al que tiene el Master.</div>
+    </div>
+    <div class="form-row">
+      <label>Network ID ZeroTier:</label>
+      <input id="zt-network-id-contrib" type="text" placeholder="16 caracteres, opcional si ya estas unido">
+    </div>
+    <div class="form-row">
+      <label>IP del Master (coordinador):</label>
+      <input id="coord-ip" type="text" placeholder="ej: 10.147.x.x o 192.168.x.x">
+    </div>
+    <div class="form-row">
+      <label>Puerto:</label>
+      <input id="coord-port" type="number" value="12356">
+    </div>
+    <div class="form-row">
+      <label>Directorio training:</label>
+      <input id="train-dir" type="text" placeholder="auto-detect">
+    </div>
+    <label class="form-row" style="display:flex;align-items:center;gap:8px">
+      <input id="max-power" type="checkbox" checked style="width:auto">
+      <span>Usar Max Power real para entrenar</span>
+    </label>
+    <div class="form-row">
+      <label>Potencia objetivo real (%):</label>
+      <input id="power-target" type="number" value="90" min="10" max="95" step="1">
+    </div>
+    <button id="btn-connect" class="btn-primary">CONECTAR y CONTRIBUIR</button>
+    <button id="btn-disconnect" class="btn-danger" disabled>DESCONECTAR</button>
+  </div>
+
+  <!-- Training progress -->
+  <div class="card" id="progress-card" style="display:none">
+    <h2>Entrenamiento en vivo</h2>
+    <div class="stats-row">
+      <div class="stat-box"><span class="stat-label">Ronda</span><span id="p-round" class="stat-value">-</span></div>
+      <div class="stat-box"><span class="stat-label">Loss</span><span id="p-loss" class="stat-value">-</span></div>
+      <div class="stat-box"><span class="stat-label">GPU</span><span id="p-gpu-util" class="stat-value">-</span></div>
+      <div class="stat-box"><span class="stat-label">VRAM</span><span id="p-vram" class="stat-value">-</span></div>
+      <div class="stat-box"><span class="stat-label">CPU</span><span id="p-cpu" class="stat-value">-</span></div>
+      <div class="stat-box"><span class="stat-label">RAM</span><span id="p-ram" class="stat-value">-</span></div>
+      <div class="stat-box"><span class="stat-label">W</span><span id="p-power" class="stat-value">-</span></div>
+      <div class="stat-box"><span class="stat-label">Objetivo</span><span id="p-target" class="stat-value">90%</span></div>
+    </div>
+    <div id="contrib-log" class="log-box">
+      <div class="log-placeholder">Esperando instrucciones del coordinador...</div>
+    </div>
+  </div>
+</div>
+<script src="contributor.js"></script>
+</body>
+</html>

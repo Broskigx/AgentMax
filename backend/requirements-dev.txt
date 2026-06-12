@@ -1,0 +1,15 @@
+# Database (para testing en memoria)
+aiosqlite>=0.19
+
+# Testing
+pytest>=8.2
+pytest-asyncio>=0.23
+pytest-cov>=5.0
+pytest-mock>=3.12
+
+# Linting
+ruff>=0.1
+black>=24.0
+
+# Type checking
+mypy>=1.7

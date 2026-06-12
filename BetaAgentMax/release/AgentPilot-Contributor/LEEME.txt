@@ -1,0 +1,48 @@
+# NixControl - Ayudar al fine-tuning
+
+## Que es esto?
+
+Tu amigo te paso este zip para ayudarlo a entrenar una IA llamada
+NixControl. Tu computadora prestara su GPU durante un rato para
+acelerar el entrenamiento. No instala nada permanente en tu PC, no
+manda datos personales, y puedes parar cuando quieras.
+
+## Como usarlo (super facil)
+
+1. Descomprime el zip donde quieras (Desktop sirve).
+2. Doble-click en NixControl-Contributor.bat
+3. Windows te pedira permisos de admin - acepta (es para que tu GPU
+   trabaje al 100%).
+4. La primera vez tarda 5-15 min (descarga librerias). Despues es
+   instantaneo.
+5. Se abre una ventana - pega la IP que te paso tu amigo y click en
+   Conectar GPU.
+6. Listo! Tu GPU entrena. Puedes minimizar la ventana.
+
+## Para parar
+
+- Cierra la ventana o click en Desconectar.
+
+## Requisitos
+
+- Windows 10/11
+- Python 3.10-3.12 instalado (descarga: https://python.org/downloads)
+  IMPORTANTE: durante la instalacion marca "Add Python to PATH"
+- GPU NVIDIA con CUDA 12.1+ (revisa con: nvidia-smi)
+- Al menos 8 GB de VRAM recomendados
+
+## Por que admin?
+
+Para activar:
+- Persistence mode de la GPU (menos latencia)
+- Power limit maximo (mas TFLOPS)
+- Prioridad REALTIME del proceso
+
+Sin admin igual funciona, pero al 60-80% de rendimiento.
+
+## Privacidad
+
+- No se manda nada personal de tu PC.
+- Solo se intercambian pesos numericos del modelo IA.
+- Conexion TCP directa con tu amigo (no pasa por internet).
+- Codigo abierto - todo lo que hace esta en estos archivos .py.

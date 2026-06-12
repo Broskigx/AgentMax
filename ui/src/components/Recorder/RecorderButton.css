@@ -1,0 +1,111 @@
+.recorder-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.recorder-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ccc;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.recorder-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.recorder-btn.recording {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  animation: recording-glow 1.4s ease-in-out infinite;
+}
+
+.recorder-btn.synthesizing {
+  opacity: 0.6;
+  cursor: default;
+  color: #6366f1;
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+@keyframes recording-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(239, 68, 68, 0.3); }
+  50%       { box-shadow: 0 0 14px rgba(239, 68, 68, 0.7); }
+}
+
+.recorder-icon { font-size: 14px; }
+
+.recording-pulse { animation: dot-pulse 1s ease-in-out infinite; }
+@keyframes dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* Task name popup */
+.recorder-name-popup {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  background: rgba(12, 12, 20, 0.95);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 8px;
+  width: 280px;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.recorder-name-input {
+  flex: 1;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+}
+.recorder-name-input:focus { border-color: rgba(99,102,241,0.5); }
+
+.recorder-name-confirm {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(99,102,241,0.3);
+  color: #a5b4fc;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.recorder-name-confirm:hover { background: rgba(99,102,241,0.5); }
+
+.recorder-name-cancel {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.recorder-result {
+  font-size: 11px;
+  color: #22c55e;
+  text-align: center;
+}

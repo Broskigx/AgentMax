@@ -1,0 +1,2 @@
+id,user_id,conversation_id,task_id,rating,message,category,screenshot_path,logs_path,created_at
+fb_078076db346d49d39fa5768fd363b413,smoke_tester,,task_2cd7b9852363412e99455d53712d453a,5,Smoke feedback with token=<SECRET>,bug,,,2026-06-08T04:18:11.173453+00:00

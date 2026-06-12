@@ -1,0 +1,30 @@
+{
+  "app_env": "closed_beta",
+  "beta_mode": true,
+  "beta_data_optin": false,
+  "api_port": 7790,
+  "ws_port": 7788,
+  "lms_host": "127.0.0.1",
+  "lms_port": 1235,
+  "model": "AgentMax-test",
+  "sqlite_path": "data/agentmax_beta.sqlite",  /* resolved at runtime against AGENTMAX_DATA_DIR (no user-specific paths) */
+  "redis_url": "redis://localhost:6379/0",
+  "telemetry_enabled": false,
+  "sentry_dsn": null,
+  "agentpilot_endpoint": "http://127.0.0.1:1235/v1/chat/completions",
+  "local_model_endpoint": "http://127.0.0.1:1234",
+  "log_level": "INFO",
+  "feature_flags": {
+    "sqlite_storage": true,
+    "screen_vision": true,
+    "local_agentpilot": true,
+    "mouse_control": false,
+    "keyboard_control": false,
+    "terminal": false,
+    "file_actions": false,
+    "cloud_agentpilot": false,
+    "telemetry": false,
+    "crash_reports": false,
+    "redis_queue": false
+  }
+}

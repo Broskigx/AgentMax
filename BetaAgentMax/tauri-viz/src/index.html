@@ -1,0 +1,351 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentMax Beta</title>
+<script>
+if (window.__TAURI__) {
+  window.__TAURI__.core.invoke('get_app_mode').then(mode => {
+    if (mode === 'contributor') window.location.href = 'contributor.html';
+  });
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <div class="header-left">
+      <div class="logo-mark"></div>
+      <div class="header-title">
+        <span class="title-main">AgentMax</span>
+        <span class="title-sub">Beta v2.0</span>
+      </div>
+    </div>
+    <div class="header-center">
+      <div id="status-pill">
+        <span id="status-dot" class="sdot stopped"></span>
+        <span id="status-text">Detenido</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="zt-status" class="zt-badge" style="display:none">🌐 ZeroTier: <span id="zt-ip">-</span></span>
+      <button id="btn-optimize" class="btn-ghost">⚡ Optimizar</button>
+      <button id="btn-hw-scan" class="btn-ghost">🔍 Escanear HW</button>
+    </div>
+  </header>
+
+  <!-- Nav tabs -->
+  <nav id="tab-bar">
+    <button class="tab active" data-tab="coordinator">🌐 Coordinador</button>
+    <button class="tab" data-tab="hardware">🖥️ Hardware</button>
+    <button class="tab" data-tab="devices">📡 Dispositivos</button>
+    <button class="tab" data-tab="ddp">⚡ DDP</button>
+    <button class="tab" data-tab="config">⚙️ Config</button>
+  </nav>
+
+  <!-- ═══ TAB: Coordinador ═══ -->
+  <div class="tab-content active" id="tab-coordinator">
+    <div class="grid-3col">
+
+      <!-- Panel config coordinador -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon">🔗</span>
+          <span class="card-title">Coordinador Federado</span>
+          <span id="zt-indicator" style="margin-left:auto;font-size:0.75rem;color:#666">ZT: <span id="zt-indicator-ip">--</span></span>
+        </div>
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Puerto</span>
+            <input id="coord-port" type="number" value="12356" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">Min contribuyentes</span>
+            <input id="coord-min" type="number" value="1" min="1" max="100" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">Max contribuyentes</span>
+            <input id="coord-max" type="number" value="100" min="1" max="500" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">Rondas FedAvg</span>
+            <input id="coord-rounds" type="number" value="3" min="1" max="50" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">Epochs / ronda</span>
+            <input id="coord-epochs" type="number" value="1" min="1" max="10" class="field-input">
+          </label>
+          <label class="field col-span-2">
+            <span class="field-label">Network ID ZeroTier</span>
+            <input id="zt-network-id-main" placeholder="16 caracteres, opcional si ya estas unido" class="field-input">
+          </label>
+          <label class="field col-span-2">
+            <span class="field-label">Directorio</span>
+            <input id="train-dir-coord" placeholder="auto-detect" class="field-input">
+          </label>
+        </div>
+        <div class="btn-row">
+          <button id="btn-start-coord" class="btn-primary">▶ Iniciar</button>
+          <button id="btn-stop-coord" class="btn-danger" disabled>⏹ Detener</button>
+        </div>
+        <div id="zt-card" style="margin-top:8px;padding:6px 10px;background:#0a0a18;border-radius:6px;font-size:0.78rem;display:none">
+          <div style="color:#22c55e">🌐 ZeroTier: <span id="zt-card-ip" style="font-weight:600">-</span></div>
+          <div style="color:#666;font-size:0.7rem;margin-top:2px">Tus amigos usan esta IP para conectarse</div>
+        </div>
+      </div>
+
+      <!-- Panel contribuyente rápido -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon">💻</span>
+          <span class="card-title">Contribuir GPU</span>
+        </div>
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">IP Coordinador</span>
+            <input id="contrib-ip" value="192.168.196.1" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">Puerto</span>
+            <input id="contrib-port" type="number" value="12356" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">Potencia objetivo %</span>
+            <input id="contrib-power-target" type="number" value="90" min="10" max="95" step="1" class="field-input">
+          </label>
+          <label class="field col-span-2">
+            <span class="field-label">torchrun</span>
+            <input id="contrib-torchrun" value=".venv\Scripts\torchrun.exe" class="field-input">
+          </label>
+          <label class="field col-span-2">
+            <span class="field-label">Directorio</span>
+            <input id="train-dir-contrib" placeholder="auto-detect" class="field-input">
+          </label>
+        </div>
+        <div class="btn-row">
+          <button id="btn-connect" class="btn-primary">🔌 Conectar GPU</button>
+          <button id="btn-disconnect" class="btn-danger" disabled>⏹ Desconectar</button>
+        </div>
+        <div id="contrib-status" class="stat-row" style="display:none;margin-top:12px">
+          <div class="stat-item"><span class="stat-label">GPU</span><span id="my-gpu" class="stat-val">-</span></div>
+          <div class="stat-item"><span class="stat-label">Estado</span><span id="my-status" class="stat-val">-</span></div>
+        </div>
+      </div>
+
+      <!-- Panel dispositivos conectados (live) -->
+      <div class="card" id="panel-contributors">
+        <div class="card-header">
+          <span class="card-icon">📡</span>
+          <span class="card-title">Contribuyentes <span id="contrib-count" class="badge">0</span></span>
+        </div>
+        <div id="device-table-wrap">
+          <table class="device-table" id="device-table">
+            <thead>
+              <tr><th>#</th><th>HOST</th><th>GPU</th><th>VRAM</th><th>STATUS</th><th>LOSS</th></tr>
+            </thead>
+            <tbody id="device-tbody">
+              <tr class="placeholder-row"><td colspan="6">Esperando contribuyentes...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Stats row (visible during training) -->
+    <div class="grid-4col" id="stats-row" style="display:none">
+      <div class="stat-card"><div class="stat-card-icon">🎮</div><div class="stat-card-label">GPU</div><div id="stat-gpu" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">💾</div><div class="stat-card-label">VRAM</div><div id="stat-vram" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">CPU</div><div class="stat-card-label">CPU</div><div id="stat-cpu" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">RAM</div><div class="stat-card-label">RAM</div><div id="stat-ram" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">W</div><div class="stat-card-label">Potencia</div><div id="stat-power" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">📉</div><div class="stat-card-label">Loss</div><div id="stat-loss" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">⏱</div><div class="stat-card-label">ETA</div><div id="stat-eta" class="stat-card-val">-</div></div>
+    </div>
+
+    <!-- Loss chart -->
+    <div class="card chart-card" id="chart-panel" style="display:none">
+      <div class="card-header">
+        <span class="card-icon">📉</span>
+        <span class="card-title">Loss en tiempo real</span>
+        <span id="current-loss" class="badge green" style="display:none">0.0000</span>
+        <button id="btn-clear-chart" class="btn-xs" style="margin-left:auto">Limpiar</button>
+      </div>
+      <canvas id="loss-chart" height="120"></canvas>
+    </div>
+
+    <!-- Logs -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-icon">📋</span>
+        <span class="card-title">Logs</span>
+        <button id="btn-clear-logs" class="btn-xs" style="margin-left:auto">Limpiar</button>
+      </div>
+      <div id="log-container"></div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: Hardware ═══ -->
+  <div class="tab-content" id="tab-hardware">
+    <div class="grid-2col">
+      <div class="card" id="hw-gpu-card">
+        <div class="card-header">
+          <span class="card-icon">🎮</span>
+          <span class="card-title">GPU</span>
+          <span id="hw-gpu-badge" class="badge" style="display:none">NVIDIA</span>
+        </div>
+        <div id="hw-gpu-content" class="hw-placeholder">Ejecuta el escáner para ver datos...</div>
+      </div>
+      <div class="card" id="hw-cpu-card">
+        <div class="card-header">
+          <span class="card-icon">⚙️</span>
+          <span class="card-title">CPU & RAM</span>
+        </div>
+        <div id="hw-cpu-content" class="hw-placeholder">Ejecuta el escáner para ver datos...</div>
+      </div>
+    </div>
+    <div class="card" id="hw-config-card">
+      <div class="card-header">
+        <span class="card-icon">🧠</span>
+        <span class="card-title">Config Óptima Recomendada</span>
+        <button id="btn-apply-config" class="btn-primary btn-sm" style="display:none;margin-left:auto">✅ Usar esta config</button>
+      </div>
+      <div id="hw-config-content" class="hw-placeholder">Ejecuta el escáner para calcular config óptima...</div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-icon">🔍</span>
+        <span class="card-title">Benchmark</span>
+      </div>
+      <div id="hw-bench-content" class="hw-placeholder">Benchmark de GPU — se ejecuta durante el escaneo...</div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: Dispositivos ═══ -->
+  <div class="tab-content" id="tab-devices">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-icon">🌐</span>
+        <span class="card-title">Red de Entrenamiento</span>
+        <span id="device-count-badge" class="badge">0 conectados</span>
+      </div>
+      <table class="device-table full-table">
+        <thead>
+          <tr>
+            <th>#</th><th>HOSTNAME</th><th>GPU</th><th>VRAM GB</th>
+            <th>CORES</th><th>STATUS</th><th>RONDA</th><th>STEP</th><th>LOSS</th>
+            <th>CPU %</th><th>RAM %</th><th>GPU %</th><th>VRAM USADA</th><th>POWER W</th><th>TEMP C</th><th>OBJ %</th>
+          </tr>
+        </thead>
+        <tbody id="all-devices-tbody">
+          <tr class="placeholder-row"><td colspan="16">Inicia el coordinador para ver dispositivos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid-3col" id="network-stats" style="margin-top:12px">
+      <div class="stat-card"><div class="stat-card-icon">💻</div><div class="stat-card-label">Dispositivos</div><div id="ns-count" class="stat-card-val">0</div></div>
+      <div class="stat-card"><div class="stat-card-icon">💾</div><div class="stat-card-label">VRAM Total</div><div id="ns-vram" class="stat-card-val">0 GB</div></div>
+      <div class="stat-card"><div class="stat-card-icon">CPU</div><div class="stat-card-label">CPU Promedio</div><div id="ns-cpu" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">RAM</div><div class="stat-card-label">RAM Promedio</div><div id="ns-ram" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">W</div><div class="stat-card-label">Power Total</div><div id="ns-power" class="stat-card-val">-</div></div>
+      <div class="stat-card"><div class="stat-card-icon">📉</div><div class="stat-card-label">Loss Promedio</div><div id="ns-loss" class="stat-card-val">-</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: DDP ═══ -->
+  <div class="tab-content" id="tab-ddp">
+    <div class="grid-2col">
+      <div class="card">
+        <div class="card-header"><span class="card-icon">⚡</span><span class="card-title">DDP (2 nodos)</span></div>
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Rol</span>
+            <select id="mode-select" class="field-input">
+              <option value="master">Master</option>
+              <option value="worker">Worker</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">IP Master</span>
+            <input id="master-addr" value="192.168.196.1" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">Puerto</span>
+            <input id="master-port" value="12355" class="field-input">
+          </label>
+          <label class="field">
+            <span class="field-label">torchrun</span>
+            <input id="venv-path" value=".venv\Scripts\torchrun.exe" class="field-input">
+          </label>
+          <label class="field col-span-2">
+            <span class="field-label">Directorio</span>
+            <input id="train-dir-ddp" placeholder="auto-detect" class="field-input">
+          </label>
+        </div>
+        <div class="btn-row">
+          <button id="btn-start-train" class="btn-primary">▶ Iniciar DDP</button>
+          <button id="btn-stop-train" class="btn-danger" disabled>⏹ Detener</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-icon">🎛</span><span class="card-title">Hiperparámetros</span></div>
+        <div class="field-grid">
+          <label class="field"><span class="field-label">Batch</span><input id="hp-batch" type="number" value="2" min="1" max="8" class="field-input"></label>
+          <label class="field"><span class="field-label">LoRA rank</span><input id="hp-lora" type="number" value="32" min="8" max="128" class="field-input"></label>
+          <label class="field"><span class="field-label">Seq len</span><input id="hp-seq" type="number" value="4096" min="1024" max="8192" class="field-input"></label>
+          <label class="field"><span class="field-label">Workers</span><input id="hp-workers" type="number" value="8" min="0" max="16" class="field-input"></label>
+          <label class="field"><span class="field-label">LR</span><input id="hp-lr" type="text" value="2e-4" class="field-input"></label>
+          <label class="field"><span class="field-label">Grad accum</span><input id="hp-grad-accum" type="number" value="4" min="1" max="16" class="field-input"></label>
+          <label class="field"><span class="field-label">Epochs</span><input id="hp-epochs" type="number" value="30" min="1" max="100" step="1" class="field-input"></label>
+        </div>
+        <div class="btn-row" style="margin-top:8px">
+          <button id="btn-max-power" class="btn-warning">⚡ Max Power</button>
+          <button id="btn-reset-hp" class="btn-ghost">↺ Reset</button>
+          <label class="toggle"><input type="checkbox" id="hp-auto" checked><span>Auto</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: Config ═══ -->
+  <div class="tab-content" id="tab-config">
+    <div class="card">
+      <div class="card-header"><span class="card-icon">⚙️</span><span class="card-title">Configuración Global</span></div>
+      <div class="field-grid" style="grid-template-columns: repeat(3, 1fr)">
+        <label class="field"><span class="field-label">Modelo base</span>
+          <select id="cfg-model" class="field-input">
+            <option value="Qwen/Qwen2.5-7B-Instruct">Qwen2.5-7B-Instruct</option>
+            <option value="Qwen/Qwen2.5-3B-Instruct">Qwen2.5-3B-Instruct</option>
+            <option value="Qwen/Qwen2.5-14B-Instruct">Qwen2.5-14B-Instruct</option>
+          </select>
+        </label>
+        <label class="field"><span class="field-label">Output dir</span><input id="cfg-output" value="outputs/AgentMax-7b-v1.0" class="field-input"></label>
+        <label class="field"><span class="field-label">Save cada N steps</span><input id="cfg-save-steps" type="number" value="20" class="field-input"></label>
+      </div>
+      <p style="color:#555;font-size:0.78rem;margin-top:12px">Estos valores se pasan a train_ddp.py y coordinator.py en cada sesión.</p>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🐛</span><span class="card-title">Bug Collector</span></div>
+      <div id="bug-stats" style="color:#666;font-size:0.82rem">Cargando stats de bugs...</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🌐</span><span class="card-title">ZeroTier</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="zt-network-id" placeholder="Network ID (16 chars)" class="field-input" style="flex:1;font-family:monospace;text-transform:uppercase">
+        <button id="btn-zt-join" class="btn-primary btn-sm">Unirse</button>
+      </div>
+      <div id="zt-status-msg" style="color:#666;font-size:0.78rem;margin-top:6px">ZeroTier permite conectar PCs como si estuvieran en la misma LAN.</div>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+.nomodel-alert {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 9999;
+  width: 278px;
+  max-width: calc(100vw - 36px);
+  border-radius: 10px;
+  background: #1f140f;
+  border: 1px solid #3f2a1f;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(245, 158, 11, 0.08) inset;
+  color: #f4e9d8;
+  font-size: 12px;
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+  overflow: hidden;
+}
+
+.nomodel-alert:active {
+  cursor: grabbing;
+}
+
+.nomodel-alert__inner {
+  display: flex;
+  gap: 9px;
+  padding: 9px 10px 7px 10px;
+  align-items: flex-start;
+}
+
+.nomodel-alert__icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #451a03;
+  color: #f59e0b;
+  display: grid;
+  place-items: center;
+  margin-top: 1px;
+}
+
+.nomodel-alert__body {
+  flex: 1;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.nomodel-alert__title {
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+  color: #fcd34d;
+  margin-bottom: 1px;
+}
+
+.nomodel-alert__msg {
+  font-size: 11.2px;
+  line-height: 1.28;
+  color: #e2d0b3;
+  margin-bottom: 3px;
+}
+
+.nomodel-alert__hint {
+  font-size: 10px;
+  color: #b38b5e;
+  line-height: 1.3;
+}
+
+.nomodel-alert__close {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #9f7a4f;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.nomodel-alert__close:hover {
+  background: #3a2719;
+  color: #fcd34d;
+}
+
+.nomodel-alert__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 10px 5px;
+  background: #2a1c14;
+  border-top: 1px solid #3f2a1f;
+  font-size: 9px;
+}
+
+.nomodel-alert__urgent {
+  background: #7c2d12;
+  color: #fed7aa;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.nomodel-alert__drag {
+  color: #8b6641;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}

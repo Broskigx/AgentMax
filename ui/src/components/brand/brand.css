@@ -1,0 +1,161 @@
+/* AgentMax brand — script logo + moving gradient text */
+
+.am-brand-script {
+  font-family: var(--am-font-brand);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.am-gradient-text {
+  background: linear-gradient(
+    105deg,
+    #fb923c 0%,
+    #f97316 22%,
+    #c2410c 42%,
+    #525252 62%,
+    #27272a 78%,
+    #0a0a0a 100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: am-gradient-flow 7s ease-in-out infinite;
+}
+
+.am-gradient-text--static {
+  animation: none;
+  background-size: 100% auto;
+}
+
+@keyframes am-gradient-flow {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 100% center; }
+}
+
+.am-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  user-select: none;
+}
+
+.am-logo--compact {
+  gap: 0;
+}
+
+.am-logo__wordmark {
+  font-size: clamp(1.6rem, 3vw, 2.35rem);
+  white-space: nowrap;
+}
+
+.am-logo--sm .am-logo__wordmark {
+  font-size: 1.35rem;
+}
+
+.am-logo--lg .am-logo__wordmark {
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
+.am-logo__image {
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 24px rgba(249, 115, 22, 0.18));
+}
+
+.am-logo--sm .am-logo__image {
+  max-height: 28px;
+}
+
+.am-logo--md .am-logo__image {
+  max-height: 36px;
+}
+
+.am-logo--lg .am-logo__image {
+  max-height: 52px;
+}
+
+.am-logo__tagline {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--am-font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--am-text-faint);
+}
+
+.am-minimal-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: #000;
+}
+
+.am-minimal-bg__layer {
+  position: absolute;
+  inset: 0;
+}
+
+.am-minimal-bg__layer--base {
+  background: linear-gradient(180deg, #030303 0%, #000 52%, #080808 100%);
+}
+
+.am-minimal-bg__layer--accent {
+  background:
+    radial-gradient(ellipse 72% 42% at 8% 100%, rgba(249, 115, 22, 0.11) 0%, transparent 72%),
+    radial-gradient(ellipse 38% 28% at 92% 0%, rgba(251, 146, 60, 0.04) 0%, transparent 70%);
+  animation: am-bg-breathe 20s ease-in-out infinite;
+}
+
+.am-minimal-bg__layer--horizon {
+  background: linear-gradient(
+    102deg,
+    rgba(251, 146, 60, 0.07) 0%,
+    rgba(234, 88, 12, 0.03) 18%,
+    transparent 42%,
+    transparent 100%
+  );
+}
+
+.am-minimal-bg__layer--vignette {
+  background: radial-gradient(ellipse 115% 95% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.72) 100%);
+}
+
+@keyframes am-bg-breathe {
+  0%, 100% {
+    opacity: 0.92;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.015);
+  }
+}
+
+.am-webgl-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: #000;
+}
+
+.am-webgl-bg canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.am-webgl-bg__fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 90% 60% at 18% 88%, rgba(234, 88, 12, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 82% 12%, rgba(251, 146, 60, 0.06) 0%, transparent 50%),
+    #000;
+}

@@ -1,0 +1,136 @@
+.computermax-prompt__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: fade-in 0.22s ease-out both;
+}
+
+.computermax-prompt__card {
+  width: min(480px, 100%);
+  border-radius: var(--am-radius-lg);
+  background: rgba(8, 8, 8, 0.96);
+  border: 1px solid rgba(249, 115, 22, 0.18);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  animation: scale-in 0.24s var(--am-ease-out) both;
+}
+
+.computermax-prompt__header {
+  padding: 28px 28px 18px;
+  text-align: center;
+  border-bottom: 1px solid var(--am-border);
+}
+
+.computermax-prompt__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  color: #fb923c;
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.computermax-prompt__title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--am-text);
+  margin-bottom: 6px;
+}
+
+.computermax-prompt__subtitle {
+  font-size: 12px;
+  color: var(--am-text-muted);
+  line-height: 1.55;
+}
+
+.computermax-prompt__body {
+  padding: 18px 28px;
+  display: grid;
+  gap: 12px;
+}
+
+.computermax-prompt__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--am-radius-sm);
+  background: rgba(248, 113, 113, 0.06);
+  border: 1px solid rgba(248, 113, 113, 0.12);
+  font-size: 11px;
+  color: #fca5a5;
+  line-height: 1.5;
+}
+
+.computermax-prompt__section {
+  display: grid;
+  gap: 6px;
+}
+
+.computermax-prompt__label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--am-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.computermax-prompt__command {
+  padding: 11px 12px;
+  border-radius: var(--am-radius-sm);
+  background: #050505;
+  border: 1px solid var(--am-border);
+  font-family: var(--am-font-mono);
+  font-size: 11px;
+  color: #d4d4d8;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.computermax-prompt__reason {
+  padding: 11px 12px;
+  border-radius: var(--am-radius-sm);
+  background: rgba(249, 115, 22, 0.05);
+  border: 1px solid rgba(249, 115, 22, 0.12);
+  font-size: 12px;
+  color: #fdba74;
+  line-height: 1.5;
+}
+
+.computermax-prompt__meta {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  font-family: var(--am-font-mono);
+  font-size: 10px;
+  color: var(--am-text-faint);
+}
+
+.computermax-prompt__footer {
+  padding: 16px 28px 22px;
+  border-top: 1px solid var(--am-border);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.computermax-prompt__approve {
+  min-width: 148px;
+}
+
+.computermax-prompt__approve:focus-visible,
+.computermax-prompt__deny:focus-visible {
+  outline: 2px solid rgba(251, 146, 60, 0.65);
+  outline-offset: 3px;
+}

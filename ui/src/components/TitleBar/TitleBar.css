@@ -1,0 +1,197 @@
+.am-titlebar {
+  flex-shrink: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 0 12px;
+  background: linear-gradient(90deg, #1c1c1c 0%, #222 100%);
+  border-bottom: 1px solid #2f2f2f;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  font-feature-settings: "tnum";
+}
+
+.am-titlebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding-right: 8px;
+}
+
+.am-titlebar__icon {
+  width: 13px;
+  height: 13px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+.am-titlebar__icon-dot {
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.am-titlebar__name {
+  font-family: var(--am-font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #e5e5e5;
+  white-space: nowrap;
+}
+
+.am-titlebar__version {
+  font-size: 10px;
+  color: #555;
+  margin-left: 2px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.am-titlebar__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-left: 1px solid rgba(255,255,255,0.06);
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+.am-titlebar__status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.am-titlebar__status--on {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+
+.am-titlebar__status--off {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.45);
+}
+
+.am-titlebar__mode-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #6b7280;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.am-titlebar__computermax {
+  font-family: var(--am-font-brand);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: #d1d5db;
+  opacity: 0.85;
+  letter-spacing: 0.01em;
+}
+
+.am-titlebar__computermax--active {
+  opacity: 1;
+  color: #f3e8d8;
+}
+
+.am-titlebar__controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.am-titlebar__control {
+  width: 48px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: background 0.08s ease, color 0.08s ease;
+}
+
+.am-titlebar__control:hover {
+  background: rgba(255,255,255,0.07);
+  color: #e5e7eb;
+}
+
+.am-titlebar__control--close:hover {
+  background: #c53030;
+  color: #fff;
+}
+
+.am-titlebar__control > span:not(.am-titlebar__restore):not(.am-titlebar__maximize):not(.am-titlebar__close) {
+  width: 10px;
+  height: 1px;
+  background: currentColor;
+}
+
+.am-titlebar__maximize {
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  display: block;
+}
+
+.am-titlebar__restore {
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  display: block;
+  transform: translate(2px, -2px);
+}
+
+.am-titlebar__close {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  display: block;
+}
+
+.am-titlebar__close::before,
+.am-titlebar__close::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+}
+
+.am-titlebar__close::before {
+  transform: rotate(45deg);
+}
+
+.am-titlebar__close::after {
+  transform: rotate(-45deg);
+}
+
+@media (max-width: 640px) {
+  .am-titlebar__services,
+  .am-titlebar__mode-label {
+    display: none;
+  }
+}

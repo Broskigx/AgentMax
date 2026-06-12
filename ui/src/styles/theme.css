@@ -1,0 +1,268 @@
+/* AgentMax — Orange & Gray minimal design system */
+
+:root {
+  /* Orange spectrum */
+  --am-orange-50: #fff7ed;
+  --am-orange-400: #fb923c;
+  --am-orange-500: #f97316;
+  --am-orange-600: #ea580c;
+  --am-orange-glow: rgba(249, 115, 22, 0.45);
+  --am-orange-soft: rgba(249, 115, 22, 0.14);
+  --am-orange-border: rgba(251, 146, 60, 0.28);
+  --am-orange-gradient: linear-gradient(135deg, #fb923c 0%, #f97316 45%, #ea580c 100%);
+
+  /* Gray spectrum */
+  --am-gray-950: #0a0a0a;
+  --am-gray-900: #111111;
+  --am-gray-850: #161616;
+  --am-gray-800: #1c1c1c;
+  --am-gray-750: #222222;
+  --am-gray-700: #2a2a2a;
+  --am-gray-600: #3f3f3f;
+  --am-gray-500: #525252;
+  --am-gray-400: #737373;
+  --am-gray-300: #a3a3a3;
+  --am-gray-200: #d4d4d4;
+  --am-gray-100: #f5f5f5;
+
+  /* Semantic */
+  --am-bg: var(--am-gray-950);
+  --am-surface: rgba(22, 22, 26, 0.78);
+  --am-surface-elevated: rgba(28, 28, 32, 0.88);
+  --am-surface-hover: rgba(36, 36, 40, 0.92);
+  --am-surface-glass: rgba(18, 18, 22, 0.65);
+  --am-border: rgba(255, 255, 255, 0.065);
+  --am-border-strong: rgba(251, 146, 60, 0.22);
+  --am-border-glow: rgba(251, 146, 60, 0.18);
+  --am-text: #f4f4f5;
+  --am-text-muted: #a1a1aa;
+  --am-text-faint: #71717a;
+  --am-success: #4ade80;
+  --am-success-soft: rgba(74, 222, 128, 0.12);
+  --am-danger: #f87171;
+  --am-danger-soft: rgba(248, 113, 113, 0.14);
+  --am-info: #60a5fa;
+  --am-info-soft: rgba(96, 165, 250, 0.12);
+
+  /* Layout */
+  --am-radius-sm: 8px;
+  --am-radius-md: 12px;
+  --am-radius-lg: 16px;
+  --am-radius-xl: 20px;
+  --am-radius-2xl: 24px;
+  --am-blur: blur(22px) saturate(1.2);
+  --am-blur-strong: blur(28px) saturate(1.25);
+
+  /* Spacing tokens (for consistency) */
+  --am-space-1: 4px;
+  --am-space-2: 8px;
+  --am-space-3: 12px;
+  --am-space-4: 16px;
+  --am-space-5: 20px;
+  --am-space-6: 24px;
+  --am-space-8: 32px;
+
+  /* Motion */
+  --am-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --am-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --am-duration-fast: 0.15s;
+  --am-duration-normal: 0.22s;
+  --am-duration-slow: 0.6s;
+
+  /* Component heights */
+  --am-btn-h-sm: 32px;
+  --am-btn-h: 38px;
+  --am-btn-h-lg: 46px;
+  --am-input-h: 44px;
+
+  /* Legacy aliases (cockpit panels) */
+  --pilot-bg: var(--am-gray-950);
+  --pilot-panel: var(--am-gray-800);
+  --pilot-border: var(--am-border);
+  --pilot-border-2: var(--am-border-strong);
+  --pilot-text: var(--am-text);
+  --pilot-muted: var(--am-text-muted);
+  --pilot-faint: var(--am-text-faint);
+  --pilot-cyan: var(--am-orange-400);
+  --pilot-green: var(--am-success);
+  --pilot-amber: #fcd34d;
+  --pilot-red: var(--am-danger);
+}
+
+/* AgentMax design system */
+
+/* Base surfaces — clean & minimal */
+.am-glass,
+.am-glass-elevated {
+  background: #111111;
+  border: 1px solid var(--am-border);
+  box-shadow: none;
+}
+
+.am-glass-hover:hover {
+  background: #161616;
+  border-color: var(--am-border-glow);
+}
+
+/* Clean minimalist buttons */
+.am-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--am-btn-h);
+  padding: 0 16px;
+  border-radius: var(--am-radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border: 1px solid var(--am-border);
+  background: #161616;
+  color: var(--am-text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.am-btn:hover:not(:disabled) {
+  background: #1f1f1f;
+  border-color: #3a3a3a;
+}
+
+.am-btn:active:not(:disabled) {
+  background: #141414;
+}
+
+.am-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary — subtle orange accent, no heavy gradient */
+.am-btn-primary {
+  background: #1a1a1a;
+  border-color: #3f2a1f;
+  color: #fb923c;
+}
+
+.am-btn-primary:hover:not(:disabled) {
+  background: #222222;
+  border-color: #f97316;
+  color: #f97316;
+}
+
+/* Ghost */
+.am-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.am-btn-ghost:hover:not(:disabled) {
+  background: #1a1a1a;
+  border-color: var(--am-border);
+}
+
+/* Danger */
+.am-btn-danger {
+  background: #1a1313;
+  border-color: #3a2323;
+  color: #f87171;
+}
+
+.am-btn-danger:hover:not(:disabled) {
+  background: #221919;
+  border-color: #f87171;
+}
+
+/* Icon button */
+.am-btn-icon {
+  width: var(--am-btn-h);
+  padding: 0;
+  border-radius: var(--am-radius-md);
+}
+
+/* Clean minimalist inputs */
+.am-input,
+.am-textarea {
+  height: var(--am-input-h);
+  padding: 0 14px;
+  border-radius: var(--am-radius-md);
+  background: #111111;
+  border: 1px solid var(--am-border);
+  color: var(--am-text);
+  font-size: 14px;
+  font-family: var(--am-font-sans);
+  transition: border-color 0.15s ease;
+}
+
+.am-input:focus,
+.am-textarea:focus {
+  outline: none;
+  border-color: #f97316;
+  background: #161616;
+}
+
+.am-input::placeholder,
+.am-textarea::placeholder {
+  color: var(--am-text-faint);
+  opacity: 0.6;
+}
+
+.am-textarea {
+  height: auto;
+  min-height: 92px;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* Clean cards */
+.am-card {
+  background: #111111;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-lg);
+  padding: var(--am-space-4);
+}
+
+.am-card:hover {
+  border-color: #3a3a3a;
+}
+
+/* Status / badges */
+.am-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--am-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.am-badge--ok {
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.25);
+  background: var(--am-success-soft);
+}
+
+.am-badge--warn {
+  color: #fdba74;
+  border-color: var(--am-orange-border);
+  background: var(--am-orange-soft);
+}
+
+/* Subtle dividers */
+.am-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--am-border), transparent);
+  margin: var(--am-space-3) 0;
+}
+
+/* Refined focus ring (accessible, on top of :focus-visible global) */
+.am-focus-ring:focus-visible {
+  outline: 2px solid rgba(251, 146, 60, 0.65);
+  outline-offset: 3px;
+  border-radius: 10px;
+}

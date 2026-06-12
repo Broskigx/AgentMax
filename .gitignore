@@ -1,0 +1,49 @@
+﻿# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*secret*
+*token*
+*credential*
+google_client_secret.json
+service-account.json
+firebase-key.json
+tokens.json
+cookies.json
+
+# Model / AI weights - do not push to normal GitHub
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.onnx
+models/
+AgentPilot-Train-Qwen3-32B/outputs/
+
+# Node / web
+node_modules/
+dist/
+build/
+.next/
+.vite/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Rust / Tauri
+target/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

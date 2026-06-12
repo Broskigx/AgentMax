@@ -1,0 +1,684 @@
+{
+  "_meta": {
+    "version": "2.0.0",
+    "description": "AgentMax tool definitions — loaded by ActionToolPlanner._load_json_registry()",
+    "generated": "2026-05-21",
+    "notes": "Every tool below maps 1:1 to a step_type in the planning engine. Input/output schemas follow JSON Schema draft-07."
+  },
+  "tools": {
+    "screenshot": {
+      "id": "screen.screenshot",
+      "name": "Capture Screen",
+      "description": "Capture the current screen state as an image for visual analysis. Use BEFORE any UI action when the current state is unknown, and AFTER any action to verify the result. Essential for grounded decision-making.",
+      "category": "vision",
+      "risk_level": "low",
+      "internal_tool_priority": 90,
+      "reasoning_weight": 0.85,
+      "timeout_ms": 6000,
+      "execution_mode": "async",
+      "permissions": ["read"],
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "region": {
+            "type": "string",
+            "description": "Optional region: 'full' (default), 'focused_window', 'taskbar'"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "image_b64": {"type": "string", "description": "Base64-encoded PNG"},
+          "width": {"type": "integer"},
+          "height": {"type": "integer"},
+          "window_title": {"type": "string"}
+        }
+      },
+      "validation_rules": ["screenshot_not_empty"],
+      "examples": [
+        {"input": {"region": "full"}, "description": "Full screen capture before planning"},
+        {"input": {"region": "focused_window"}, "description": "Capture only the active window"}
+      ],
+      "requires_user_idle": false,
+      "can_interrupt": false,
+      "safe_mode_support": true
+    },
+    "move_mouse": {
+      "id": "mouse.move",
+      "name": "Move Mouse",
+      "description": "Move the cursor to absolute pixel coordinates (x, y) on screen. Does NOT click. Use when you need to hover over an element, trigger hover effects, or position the cursor before clicking. Coordinates are measured from the top-left of the primary monitor.",
+      "category": "mouse",
+      "risk_level": "low",
+      "internal_tool_priority": 72,
+      "reasoning_weight": 0.74,
+      "timeout_ms": 5000,
+      "execution_mode": "serialized",
+      "permissions": ["input"],
+      "confidence_threshold": 0.30,
+      "retry_policy": {"max_attempts": 2, "backoff_ms": 150, "retry_on": ["transient_error"]},
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["x", "y"],
+        "properties": {
+          "x": {"type": "integer", "minimum": 0, "description": "Absolute X coordinate (pixels from left)"},
+          "y": {"type": "integer", "minimum": 0, "description": "Absolute Y coordinate (pixels from top)"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {"position": {"type": "string", "description": "Final cursor position [x, y]"}}
+      },
+      "examples": [
+        {"input": {"x": 500, "y": 300}, "description": "Move cursor to center of screen area"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "click": {
+      "id": "mouse.click",
+      "name": "Click UI Element",
+      "description": "Click a visible UI element on screen. Supports left-click, right-click, and double-click. Prefer using pixel coordinates (x, y) taken from the screenshot for precision. Falls back to OCR-based element search by text label when coordinates are unavailable.",
+      "category": "ui",
+      "risk_level": "low",
+      "internal_tool_priority": 70,
+      "reasoning_weight": 0.70,
+      "timeout_ms": 8000,
+      "execution_mode": "serialized",
+      "permissions": ["input"],
+      "confidence_threshold": 0.70,
+      "retry_policy": {"max_attempts": 2, "backoff_ms": 250, "retry_on": ["transient_error", "target_stale"]},
+      "fallback_chain": ["screenshot"],
+      "input_schema": {
+        "type": "object",
+        "oneOf": [
+          {"required": ["x", "y"]},
+          {"required": ["target"]}
+        ],
+        "properties": {
+          "x": {"type": "integer", "description": "Absolute X coordinate"},
+          "y": {"type": "integer", "description": "Absolute Y coordinate"},
+          "target": {
+            "type": "object",
+            "properties": {
+              "text": {"type": "string", "description": "Visible text label of the element"},
+              "bounds": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4, "description": "[x, y, w, h] bounding box"}
+            }
+          },
+          "click_type": {"type": "string", "enum": ["left", "right", "double"], "default": "left"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "clicked_at": {"type": "string", "description": "[x, y] where click landed"},
+          "element_found": {"type": "boolean"},
+          "method": {"type": "string", "enum": ["coordinates", "ocr", "accessibility"]}
+        }
+      },
+      "validation_rules": ["clickable_region", "not_out_of_bounds"],
+      "examples": [
+        {"input": {"x": 500, "y": 300, "click_type": "left"}, "description": "Left-click at pixel coordinate"},
+        {"input": {"target": {"text": "OK"}, "click_type": "left"}, "description": "Click button labeled 'OK'"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "type": {
+      "id": "keyboard.type_text",
+      "name": "Type Text",
+      "description": "Type a string of text into the currently focused UI element (textbox, editor, search field, etc.). The target element MUST be focused BEFORE calling this step — use click() first if needed. Supports all printable characters including Unicode.",
+      "category": "ui",
+      "risk_level": "low",
+      "internal_tool_priority": 70,
+      "reasoning_weight": 0.72,
+      "timeout_ms": 8000,
+      "execution_mode": "serialized",
+      "permissions": ["input"],
+      "confidence_threshold": 0.72,
+      "retry_policy": {"max_attempts": 2, "backoff_ms": 250, "retry_on": ["transient_error"]},
+      "fallback_chain": ["screenshot"],
+      "input_schema": {
+        "type": "object",
+        "required": ["value"],
+        "properties": {
+          "value": {"type": "string", "maxLength": 5000, "description": "Text to type into the focused element"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "characters_typed": {"type": "integer"},
+          "into_element": {"type": "string", "description": "Window title where text was typed"}
+        }
+      },
+      "examples": [
+        {"input": {"value": "Hola Mundo"}, "description": "Type text into the focused text field"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "key": {
+      "id": "keyboard.hotkey",
+      "name": "Press Key / Shortcut",
+      "description": "Press a keyboard key or keyboard shortcut combination. Supports single keys (enter, escape, tab), modifiers (ctrl, alt, shift, win), and combinations (ctrl+c, alt+f4, win+r). Use this for navigation shortcuts, system commands, and UI keyboard interactions. For typing text, use the 'type' step instead.",
+      "category": "ui",
+      "risk_level": "low",
+      "internal_tool_priority": 65,
+      "reasoning_weight": 0.62,
+      "timeout_ms": 5000,
+      "execution_mode": "serialized",
+      "permissions": ["input"],
+      "confidence_threshold": 0.62,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["keys"],
+        "properties": {
+          "keys": {
+            "type": "string",
+            "description": "Key or shortcut. Examples: 'enter', 'escape', 'ctrl+c', 'alt+f4', 'win+r', 'win', 'tab', 'shift+tab'"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "keys_pressed": {"type": "string"},
+          "target_window": {"type": "string"}
+        }
+      },
+      "examples": [
+        {"input": {"keys": "win"}, "description": "Open Start menu"},
+        {"input": {"keys": "ctrl+c"}, "description": "Copy selected text"},
+        {"input": {"keys": "alt+f4"}, "description": "Close current window"},
+        {"input": {"keys": "enter"}, "description": "Press Enter to confirm"},
+        {"input": {"keys": "ctrl+v"}, "description": "Paste from clipboard"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "scroll": {
+      "id": "mouse.scroll",
+      "name": "Scroll",
+      "description": "Scroll the content at the current cursor position. Use when content is partially visible or the target element is below the fold. Combine with screenshot to verify scroll position.",
+      "category": "ui",
+      "risk_level": "low",
+      "internal_tool_priority": 50,
+      "reasoning_weight": 0.45,
+      "timeout_ms": 5000,
+      "execution_mode": "serialized",
+      "permissions": ["input"],
+      "confidence_threshold": 0.45,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["direction"],
+        "properties": {
+          "direction": {"type": "string", "enum": ["up", "down"], "description": "Scroll direction"},
+          "amount": {"type": "integer", "minimum": 1, "default": 3, "description": "Number of scroll clicks (3 = ~3 lines or one notch)"},
+          "x": {"type": "integer", "description": "Optional X coordinate to scroll at"},
+          "y": {"type": "integer", "description": "Optional Y coordinate to scroll at"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {"scrolled": {"type": "boolean"}}
+      },
+      "examples": [
+        {"input": {"direction": "down", "amount": 5}, "description": "Scroll down 5 notches"},
+        {"input": {"direction": "up", "amount": 3}, "description": "Scroll up 3 notches"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "wait": {
+      "id": "task.wait",
+      "name": "Wait (Sleep)",
+      "description": "Pause execution for a specified duration. Use to wait for UI animations to complete, applications to load, or content to render. Prefer short waits (0.5-2s) and combine with screenshot verification instead of long fixed waits.",
+      "category": "control",
+      "risk_level": "low",
+      "internal_tool_priority": 25,
+      "reasoning_weight": 0.20,
+      "timeout_ms": 3000,
+      "execution_mode": "internal",
+      "permissions": [],
+      "confidence_threshold": 0.20,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["duration_sec"],
+        "properties": {
+          "duration_sec": {"type": "number", "minimum": 0.1, "maximum": 30, "default": 1.0}
+        }
+      },
+      "output_schema": {"type": "object", "properties": {}},
+      "examples": [
+        {"input": {"duration_sec": 0.5}, "description": "Wait 500ms for UI animation"},
+        {"input": {"duration_sec": 2.0}, "description": "Wait 2s for app to load"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "computer": {
+      "id": "computer.execute",
+      "name": "Computer Use (OpenAI Computer Use style)",
+      "description": "Primary tool for desktop control, modeled directly after OpenAI's computer-use tool. Send a list of actions the model decided after seeing the latest screenshot. The model must output low-level, precise actions using pixel coordinates from the image it received. Supported actions closely match OpenAI: click, double_click, move, type, key, scroll, wait, screenshot. This replaces high-level app navigation — the AI reasons visually and drives the mouse/keyboard directly.",
+      "category": "computer",
+      "risk_level": "medium",
+      "internal_tool_priority": 88,
+      "reasoning_weight": 0.93,
+      "timeout_ms": 60000,
+      "execution_mode": "serialized",
+      "permissions": ["input"],
+      "confidence_threshold": 0.68,
+      "retry_policy": {"max_attempts": 2, "backoff_ms": 300},
+      "execution_cost": 1.2,
+      "fallback_chain": ["screenshot"],
+      "input_schema": {
+        "type": "object",
+        "required": ["actions"],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": ["click", "double_click", "move", "type", "key", "scroll", "wait", "screenshot"]
+                },
+                "x": {"type": "integer"},
+                "y": {"type": "integer"},
+                "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"},
+                "text": {"type": "string"},
+                "scroll_x": {"type": "integer", "default": 0},
+                "scroll_y": {"type": "integer", "default": 0},
+                "duration_ms": {"type": "integer"}
+              },
+              "required": ["action"]
+            }
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "executed": {"type": "integer"},
+          "last_action": {"type": "string"}
+        }
+      },
+      "examples": [
+        {"input": {"actions": [{"action": "move", "x": 512, "y": 384}, {"action": "click", "x": 512, "y": 384, "button": "left"}]}, "description": "Move and click at coordinates taken from the screenshot"},
+        {"input": {"actions": [{"action": "type", "text": "AgentMax is running"}, {"action": "key", "text": "enter"}]}, "description": "Type and confirm"}
+      ],
+      "requires_user_idle": true,
+      "safe_mode_support": true
+    },
+    "close_app": {
+      "id": "ui.close_window",
+      "name": "Close Window via Vision + Mouse",
+      "description": "Close the active or target window by visually locating and clicking the close (X) button or using Alt+F4 via keyboard simulation after focusing via vision. Pure vision/mouse or vision+key. No app name word matching or process name detection.",
+      "category": "ui",
+      "risk_level": "low",
+      "internal_tool_priority": 62,
+      "reasoning_weight": 0.70,
+      "timeout_ms": 8000,
+      "execution_mode": "serialized",
+      "permissions": ["input"],
+      "confidence_threshold": 0.70,
+      "retry_policy": {"max_attempts": 2, "backoff_ms": 300},
+      "execution_cost": 0.7,
+      "fallback_chain": ["key"],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Visual description of the window or its close button (e.g. 'the X in top right of the active calculator window')"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "closed": {"type": "boolean"},
+          "method": {"type": "string", "enum": ["close_button", "alt_f4"]}
+        }
+      },
+      "examples": [
+        {"input": {"target": "red X button top-right of the foreground window"}, "description": "Close current window by clicking X via vision"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "shell": {
+      "id": "shell.run",
+      "name": "Run Shell Command",
+      "description": "Execute a bounded shell command. LAST RESORT ONLY — only use when NO OTHER TOOL applies. NEVER use for computer control (use computer or navigate with vision target), clicking, typing, keyboard, files, or web. NO compound commands. Pure vision+mouse for desktop.",
+      "category": "system",
+      "risk_level": "high",
+      "internal_tool_priority": 45,
+      "reasoning_weight": 0.80,
+      "timeout_ms": 15000,
+      "execution_mode": "sandboxed",
+      "permissions": ["elevated"],
+      "sandbox_mode": "restricted",
+      "dangerous": true,
+      "confidence_threshold": 0.80,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "execution_cost": 2.0,
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["command"],
+        "properties": {
+          "command": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Single shell command. No &&, |, or chaining. Must be a simple, bounded operation."
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "stdout": {"type": "string"},
+          "stderr": {"type": "string"},
+          "exit_code": {"type": "integer"}
+        }
+      },
+      "validation_rules": ["no_compound_commands", "no_remote_execution", "no_destructive_patterns"],
+      "examples": [
+        {"input": {"command": "echo Hello"}, "description": "Simple echo command"},
+        {"input": {"command": "ipconfig"}, "description": "Show network configuration"}
+      ],
+      "requires_user_idle": true,
+      "can_interrupt": false,
+      "safe_mode_support": true
+    },
+    "read_file": {
+      "id": "filesystem.read",
+      "name": "Read File",
+      "description": "Read the contents of a file from the filesystem. Returns the file content as text. Use for reading code files, documents, configuration files, etc. Only works with text files; binary files may return garbled content.",
+      "category": "file",
+      "risk_level": "low",
+      "internal_tool_priority": 60,
+      "reasoning_weight": 0.60,
+      "timeout_ms": 8000,
+      "execution_mode": "async",
+      "permissions": ["read"],
+      "confidence_threshold": 0.60,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "description": "Absolute or relative path to the file"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "content": {"type": "string"},
+          "size_bytes": {"type": "integer"},
+          "encoding": {"type": "string"}
+        }
+      },
+      "examples": [
+        {"input": {"path": "C:/Users/test/file.txt"}, "description": "Read a text file"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "write_file": {
+      "id": "filesystem.write",
+      "name": "Write File",
+      "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Use for creating scripts, documents, or saving data. DANGEROUS — can overwrite existing files without confirmation when risk is high.",
+      "category": "file",
+      "risk_level": "high",
+      "internal_tool_priority": 42,
+      "reasoning_weight": 0.75,
+      "timeout_ms": 10000,
+      "execution_mode": "serialized",
+      "permissions": ["write"],
+      "sandbox_mode": "workspace",
+      "dangerous": true,
+      "confidence_threshold": 0.75,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "execution_cost": 1.0,
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path": {"type": "string", "description": "Path to the file to write"},
+          "content": {"type": "string", "description": "Content to write to the file"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "bytes_written": {"type": "integer"},
+          "created": {"type": "boolean"}
+        }
+      },
+      "validation_rules": ["not_protected_path"],
+      "examples": [
+        {"input": {"path": "output.txt", "content": "Hello World"}, "description": "Write a simple text file"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "list_dir": {
+      "id": "filesystem.list",
+      "name": "List Directory",
+      "description": "List files and directories at a given path. Returns names and metadata (size, modified time, type). Use to explore directory structure before reading or operating on files.",
+      "category": "file",
+      "risk_level": "low",
+      "internal_tool_priority": 55,
+      "reasoning_weight": 0.40,
+      "timeout_ms": 8000,
+      "execution_mode": "async",
+      "permissions": ["read"],
+      "confidence_threshold": 0.40,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "description": "Directory path to list"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string"},
+                "size": {"type": "integer"},
+                "is_directory": {"type": "boolean"},
+                "modified": {"type": "string"}
+              }
+            }
+          },
+          "total": {"type": "integer"}
+        }
+      },
+      "examples": [
+        {"input": {"path": "."}, "description": "List current directory"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "move_file": {
+      "id": "filesystem.move",
+      "name": "Move File / Rename",
+      "description": "Move a file or directory from source to destination. Can also be used for renaming. DANGEROUS — can overwrite existing files at the destination.",
+      "category": "file",
+      "risk_level": "high",
+      "internal_tool_priority": 40,
+      "reasoning_weight": 0.70,
+      "timeout_ms": 10000,
+      "execution_mode": "serialized",
+      "permissions": ["write"],
+      "sandbox_mode": "workspace",
+      "dangerous": true,
+      "confidence_threshold": 0.70,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "execution_cost": 1.0,
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["source", "destination"],
+        "properties": {
+          "source": {"type": "string", "description": "Current file path"},
+          "destination": {"type": "string", "description": "Target file path"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "source": {"type": "string"},
+          "destination": {"type": "string"},
+          "success": {"type": "boolean"}
+        }
+      },
+      "validation_rules": ["not_protected_path"],
+      "examples": [
+        {"input": {"source": "old.txt", "destination": "new.txt"}, "description": "Rename a file"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "delete_file": {
+      "id": "filesystem.delete",
+      "name": "Delete File",
+      "description": "Permanently delete a file or empty directory. EXTREMELY DANGEROUS — this cannot be undone. Files deleted with this tool do NOT go to the Recycle Bin. Blocked for root-level paths and wildcards.",
+      "category": "file",
+      "risk_level": "critical",
+      "internal_tool_priority": 15,
+      "reasoning_weight": 0.90,
+      "timeout_ms": 10000,
+      "execution_mode": "serialized",
+      "permissions": ["destructive"],
+      "sandbox_mode": "workspace",
+      "dangerous": true,
+      "confidence_threshold": 0.90,
+      "retry_policy": {"max_attempts": 1, "backoff_ms": 0, "retry_on": []},
+      "execution_cost": 1.0,
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string", "description": "Path to the file or empty directory to delete"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "deleted": {"type": "boolean"}
+        }
+      },
+      "validation_rules": ["not_root_or_wildcard"],
+      "requires_user_idle": true,
+      "safe_mode_support": false
+    },
+    "search": {
+      "id": "browser.search",
+      "name": "Web Search",
+      "description": "Search the web using DuckDuckGo search engine. Returns up to 8 search result snippets with titles and URLs. Use for factual questions, research, looking up information, finding websites. For detailed content from a specific URL, use 'read_page' after search.",
+      "category": "network",
+      "risk_level": "low",
+      "internal_tool_priority": 52,
+      "reasoning_weight": 0.55,
+      "timeout_ms": 18000,
+      "execution_mode": "async",
+      "permissions": ["network"],
+      "confidence_threshold": 0.55,
+      "retry_policy": {"max_attempts": 2, "backoff_ms": 500, "retry_on": ["transient_error", "timeout"]},
+      "execution_cost": 1.4,
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {"type": "string", "maxLength": 500, "description": "Search query string"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {"type": "string"},
+                "url": {"type": "string"},
+                "snippet": {"type": "string"}
+              }
+            }
+          },
+          "total_results": {"type": "integer"}
+        }
+      },
+      "examples": [
+        {"input": {"query": "current weather in Madrid"}, "description": "Search for current weather"},
+        {"input": {"query": "Python tutorial for beginners"}, "description": "Search for learning resources"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    },
+    "read_page": {
+      "id": "browser.read_page",
+      "name": "Read Web Page",
+      "description": "Fetch and extract readable text content from a URL. Returns the page title, metadata, and cleaned text (stripped of scripts, navigation, and ads). Use after search when snippets are not enough and you need the full content. Also use for reading documentation, articles, or any web page.",
+      "category": "network",
+      "risk_level": "low",
+      "internal_tool_priority": 50,
+      "reasoning_weight": 0.55,
+      "timeout_ms": 18000,
+      "execution_mode": "async",
+      "permissions": ["network"],
+      "confidence_threshold": 0.55,
+      "retry_policy": {"max_attempts": 2, "backoff_ms": 500, "retry_on": ["transient_error", "timeout"]},
+      "execution_cost": 1.4,
+      "fallback_chain": [],
+      "input_schema": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {"type": "string", "format": "uri", "description": "Full URL to fetch (http:// or https://)"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string"},
+          "content": {"type": "string"},
+          "url": {"type": "string"},
+          "word_count": {"type": "integer"}
+        }
+      },
+      "examples": [
+        {"input": {"url": "https://en.wikipedia.org/wiki/Windows_11"}, "description": "Read Wikipedia article"}
+      ],
+      "requires_user_idle": false,
+      "safe_mode_support": true
+    }
+  }
+}

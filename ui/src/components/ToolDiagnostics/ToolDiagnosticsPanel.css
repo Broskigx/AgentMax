@@ -1,0 +1,119 @@
+.tool-diagnostics-panel {
+  gap: 10px;
+}
+
+.tooldiag-permissions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.tooldiag-permissions label {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid var(--pilot-border);
+  border-radius: 8px;
+  color: var(--pilot-muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tooldiag-permissions input {
+  width: 14px;
+  height: 14px;
+  accent-color: #f97316;
+}
+
+.tooldiag-status {
+  display: grid;
+  gap: 6px;
+}
+
+.tooldiag-status span {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid var(--pilot-border);
+  border-radius: 8px;
+  color: var(--pilot-muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tooldiag-good {
+  color: #fff !important;
+}
+
+.tooldiag-bad,
+.tooldiag-warning {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.tooldiag-warning {
+  padding: 9px;
+  border: 1px solid var(--pilot-border);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.tooldiag-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.tooldiag-actions .pilot-secondary-button {
+  min-width: 0;
+}
+
+.tooldiag-input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--pilot-border);
+  border-radius: 8px;
+  color: var(--pilot-text);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  outline: 0;
+}
+
+.tooldiag-input:focus {
+  border-color: rgba(255, 255, 255, 0.38);
+}
+
+.tooldiag-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid var(--pilot-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tooldiag-result {
+  display: block;
+  min-height: 34px;
+  max-height: 74px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--pilot-border);
+  border-radius: 8px;
+  color: var(--pilot-muted);
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

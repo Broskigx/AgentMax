@@ -1,0 +1,609 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Allura&display=swap');
+@import './styles/theme.css';
+@import './components/brand/brand.css';
+
+@font-face {
+  font-family: 'Beyline';
+  src: local('Beyline');
+  font-display: swap;
+}
+
+/* Global typography */
+
+:root {
+  --am-font-brand: 'Allura', 'Beyline', 'Segoe Script', cursive;
+  --am-font-sans:
+    'Beyline', 'Inter', 'Inter Variable',
+    -apple-system, BlinkMacSystemFont,
+    'SF Pro Display', 'SF Pro Text',
+    'Segoe UI Variable', 'Segoe UI',
+    system-ui, ui-sans-serif,
+    'Helvetica Neue', Arial, sans-serif;
+  --am-font-mono:
+    'JetBrains Mono', 'JetBrains Mono Variable',
+    'SF Mono', 'Cascadia Code', 'Cascadia Mono',
+    'Fira Code', 'Source Code Pro',
+    ui-monospace, Menlo, Consolas, monospace;
+  /* Tracking presets (em units so they scale with font-size) */
+  --am-track-display: -0.022em;   /* big headings */
+  --am-track-heading: -0.014em;
+  --am-track-body:    -0.005em;
+  --am-track-label:    0.04em;    /* small caps / chip labels */
+  --am-track-mono:     0;
+  /* Vertical rhythm */
+  --am-leading-tight: 1.2;
+  --am-leading-snug:  1.35;
+  --am-leading-body:  1.55;
+  --am-leading-relax: 1.7;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+html {
+  /* base size; respects user OS preferences */
+  font-size: 15px;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--am-font-sans);
+  font-size: 14px;
+  line-height: var(--am-leading-body);
+  letter-spacing: var(--am-track-body);
+  font-feature-settings:
+    'ss01' on,    /* Inter stylistic set: open digits + curved i/l */
+    'ss02' on,    /* alternate ampersand */
+    'cv11' on,    /* single-storey a */
+    'calt' on,    /* contextual alternates */
+    'liga' on,    /* common ligatures */
+    'kern' on;
+  font-variant-numeric: oldstyle-nums proportional-nums;
+  color: var(--am-text);
+}
+
+/* Headings: tighter tracking, taller weight, snug leading */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--am-font-sans);
+  font-weight: 600;
+  line-height: var(--am-leading-tight);
+  letter-spacing: var(--am-track-heading);
+  font-feature-settings: 'ss01' on, 'cv11' on, 'calt' on, 'liga' on, 'kern' on;
+}
+
+h1 { font-weight: 700; letter-spacing: var(--am-track-display); }
+h2 { font-weight: 700; }
+h3 { font-weight: 600; }
+
+/* Buttons and form controls inherit the elegant stack instead of UA defaults */
+button, input, select, textarea {
+  font-family: inherit;
+  font-feature-settings: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+}
+
+/* Anything that looks code-y gets the mono stack + ligatures */
+code, kbd, samp, pre, .am-mono {
+  font-family: var(--am-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings:
+    'liga' on,    /* enable ligatures (==, =>, !=, ->) */
+    'calt' on,
+    'zero' on;    /* slashed zero for HUD */
+  letter-spacing: var(--am-track-mono);
+}
+
+/* HUD chips, status labels, tabular numerals everywhere we surface stats */
+.am-label, .am-chip, .am-meta, .am-status,
+[data-tabular-nums="true"], .am-tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' on, 'ss01' on, 'calt' on, 'liga' on;
+  letter-spacing: var(--am-track-label);
+  text-transform: uppercase;
+  font-size: 0.78em;
+  font-weight: 500;
+}
+
+/* ── Layout shell ─────────────────────────────────────────────────────── */
+
+.app-root {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  font-family: var(--am-font-sans);
+  font-size: 14px;
+  line-height: var(--am-leading-body);
+  letter-spacing: var(--am-track-body);
+  font-feature-settings: 'ss01' on, 'ss02' on, 'cv11' on, 'calt' on, 'liga' on, 'kern' on;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background: #000;
+  overflow: hidden;
+}
+
+.app-root__content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Vignette overlay (used by WebGL background) ───────────────────────── */
+
+.am-ambient__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 42%, rgba(0, 0, 0, 0.62) 100%);
+  pointer-events: none;
+}
+
+/* ── Connection banner ────────────────────────────────────────────────── */
+
+.am-connection-banner {
+  flex-shrink: 0;
+  padding: 9px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--am-border);
+  backdrop-filter: var(--am-blur);
+  -webkit-backdrop-filter: var(--am-blur);
+}
+
+.am-connection-banner--online {
+  color: #fed7aa;
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.06), rgba(249, 115, 22, 0.14), rgba(249, 115, 22, 0.06));
+  border-bottom-color: var(--am-orange-border);
+}
+
+.am-connection-banner--offline {
+  color: #fecaca;
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.06), rgba(248, 113, 113, 0.14), rgba(248, 113, 113, 0.06));
+  border-bottom-color: rgba(248, 113, 113, 0.25);
+}
+
+/* ── Glassmorphism ────────────────────────────────────────────────────── */
+
+.glass-panel {
+  background: var(--am-surface);
+  backdrop-filter: var(--am-blur);
+  -webkit-backdrop-filter: var(--am-blur);
+  border: 1px solid var(--am-border);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--am-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  transition: all var(--am-duration-normal) var(--am-ease-out);
+}
+
+.glass-card:hover {
+  background: rgba(249, 115, 22, 0.04);
+  border-color: var(--am-orange-border);
+  box-shadow: 0 8px 32px rgba(249, 115, 22, 0.08);
+}
+
+/* ── Glow Effects ─────────────────────────────────────────────────────── */
+
+.glow-blue,
+.glow-orange {
+  box-shadow:
+    0 0 20px var(--am-orange-glow),
+    0 0 48px rgba(249, 115, 22, 0.12);
+}
+
+.glow-green {
+  box-shadow:
+    0 0 20px rgba(74, 222, 128, 0.1),
+    0 0 40px rgba(74, 222, 128, 0.05);
+}
+
+.glow-red {
+  box-shadow:
+    0 0 20px rgba(248, 113, 113, 0.1),
+    0 0 40px rgba(248, 113, 113, 0.05);
+}
+
+/* ── Premium Scrollbars (thin, dark, subtle orange accent) ─────────────── */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,0.2);
+  transition: background 0.15s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(249, 115, 22, 0.32);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+/* ── Selection ────────────────────────────────────────────────────────── */
+
+::selection {
+  background: rgba(249, 115, 22, 0.75);
+  color: #fff;
+  /* preserve typographic features inside selection */
+  text-shadow: none;
+}
+
+/* ── Focus ────────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid rgba(251, 146, 60, 0.75);
+  outline-offset: 3px;
+  border-radius: 6px;
+  transition: outline-color var(--am-duration-fast) ease, outline-offset var(--am-duration-fast) ease;
+}
+
+/* ── Premium Animations ───────────────────────────────────────────────── */
+
+@keyframes mesh-shift {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 50% 100%;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ping {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 6px var(--am-orange-glow);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 18px var(--am-orange-glow), 0 0 36px rgba(249, 115, 22, 0.2);
+    opacity: 0.85;
+  }
+}
+
+@keyframes orange-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes am-breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.02); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes hud-pulse {
+  0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.3; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+@keyframes hud-scan {
+  0%, 100% { opacity: 0.1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes widget-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes border-glow {
+  0%, 100% {
+    border-color: var(--am-border);
+  }
+  50% {
+    border-color: var(--am-orange-border);
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes progress-fill {
+  from { width: 0%; }
+}
+
+/* ── Utility Classes ──────────────────────────────────────────────────── */
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Clean minimalist chat */
+.am-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: #0f0f0f;
+}
+
+.am-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--am-border);
+  background: #111111;
+}
+
+.am-chat-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: #f97316;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.am-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.am-chat-bubble-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.am-chat-bubble-row.user {
+  flex-direction: row-reverse;
+}
+
+.am-chat-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid var(--am-border);
+  background: #1a1a1a;
+  color: #a1a1aa;
+}
+
+.am-chat-bubble {
+  max-width: 76%;
+  padding: 8px 12px 6px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.am-chat-bubble.user {
+  background: #1f1f1f;
+  border: 1px solid #3a2a20;
+}
+
+.am-chat-bubble.assistant {
+  background: #161616;
+  border: 1px solid var(--am-border);
+}
+
+.am-chat-bubble-text {
+  margin: 0;
+  color: #e5e5e7;
+  white-space: pre-wrap;
+}
+
+.am-chat-input-area {
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--am-border);
+  background: #111111;
+  flex-shrink: 0;
+}
+
+.am-chat-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  background: #0f0f0f;
+  border-radius: 10px;
+  border: 1px solid var(--am-border);
+  padding: 6px 8px 6px 12px;
+}
+
+.am-chat-input-row:focus-within {
+  border-color: #f97316;
+}
+
+.am-chat-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #e5e5e7;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 4px 0;
+  font-family: var(--am-font-sans);
+  resize: none;
+  max-height: 110px;
+}
+
+.am-chat-input::placeholder {
+  color: #555;
+}
+
+.am-chat-send {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid var(--am-border);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: #1a1a1a;
+  color: #a1a1aa;
+  flex-shrink: 0;
+  transition: all 0.1s ease;
+}
+
+.am-chat-send:hover:not(:disabled) {
+  background: #222;
+  color: #f97316;
+  border-color: #f97316;
+}
+
+.am-chat-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Minimal sections inside chat */
+.am-chat-section {
+  border-top: 1px solid var(--am-border);
+  background: #0c0c0c;
+}
+
+.am-chat-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.am-chat-field-input {
+  padding: 5px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--am-border);
+  background: #111;
+  color: #ddd;
+  font-size: 11px;
+  font-family: var(--am-font-mono);
+}
+
+.am-chat-field-input:focus {
+  border-color: #f97316;
+}
+
+/* (Terminal styles removed — all logs and console live exclusively in Recovery) */

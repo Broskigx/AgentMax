@@ -1,0 +1,416 @@
+.recovery-root {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 310px minmax(0, 1fr);
+  color: #e8edf5;
+  background: #07090d;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  overflow: hidden;
+}
+
+.recovery-root button,
+.recovery-root input,
+.recovery-root select {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.recovery-sidebar {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0c1016;
+  overflow: auto;
+}
+
+.recovery-brand {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.recovery-brand > svg {
+  width: 38px;
+  height: 38px;
+  padding: 8px;
+  border-radius: 8px;
+  color: #101318;
+  background: #7dd3fc;
+}
+
+.recovery-brand strong,
+.recovery-brand span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recovery-brand strong {
+  font-size: 17px;
+  font-weight: 850;
+}
+
+.recovery-brand span,
+.recovery-status-grid span,
+.recovery-panel-heading span,
+.recovery-kv span {
+  color: #8c9aad;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.recovery-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.recovery-status-grid div,
+.recovery-panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #111722;
+}
+
+.recovery-status-grid div {
+  min-height: 82px;
+  padding: 11px;
+}
+
+.recovery-status-grid svg {
+  color: #5eead4;
+  margin-bottom: 9px;
+}
+
+.recovery-status-grid strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.recovery-panel {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.recovery-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recovery-panel-heading strong {
+  color: #bef264;
+  font-size: 12px;
+}
+
+.recovery-kv {
+  display: grid;
+  gap: 4px;
+}
+
+.recovery-kv code,
+.recovery-path {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #c7d2fe;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.recovery-error-text {
+  margin: 0;
+  color: #fca5a5;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.recovery-button-row,
+.recovery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recovery-button-row button,
+.recovery-toolbar button,
+.recovery-toolbar select {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  color: #e8edf5;
+  background: #151d2a;
+}
+
+.recovery-button-row button,
+.recovery-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.recovery-toolbar button {
+  width: 36px;
+  padding: 0;
+}
+
+.recovery-button-row button:hover,
+.recovery-toolbar button:hover,
+.recovery-toolbar select:hover {
+  border-color: rgba(125, 211, 252, 0.45);
+  background: #1b2638;
+}
+
+.recovery-console {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: #07090d;
+}
+
+.recovery-toolbar {
+  min-height: 62px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  background: #0a0d13;
+}
+
+.recovery-search {
+  min-width: 220px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: #111722;
+}
+
+.recovery-search svg {
+  color: #8c9aad;
+  flex: 0 0 auto;
+}
+
+.recovery-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #e8edf5;
+  background: transparent;
+}
+
+.recovery-search input::placeholder {
+  color: #5d6a7d;
+}
+
+.recovery-toolbar select {
+  max-width: 180px;
+  padding: 0 9px;
+}
+
+.recovery-command-line {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  color: #a7f3d0;
+  background: #080c10;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.recovery-command-line code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recovery-command-line label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8c9aad;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.recovery-log-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    #07090d;
+  background-size: 100% 28px;
+}
+
+.recovery-line {
+  width: 100%;
+  min-height: 30px;
+  display: grid;
+  grid-template-columns: 76px 62px minmax(140px, 220px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #dbeafe;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recovery-line:hover,
+.recovery-line--selected {
+  border-color: rgba(125, 211, 252, 0.25);
+  background: rgba(125, 211, 252, 0.06);
+}
+
+.recovery-line-time,
+.recovery-line-level,
+.recovery-line-source,
+.recovery-line-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+}
+
+.recovery-line-time {
+  color: #64748b;
+}
+
+.recovery-line-level {
+  text-transform: uppercase;
+  font-weight: 850;
+}
+
+.recovery-line-source {
+  color: #93c5fd;
+}
+
+.recovery-line-message {
+  color: #dbeafe;
+}
+
+.recovery-line--error .recovery-line-level,
+.recovery-line--error .recovery-line-message {
+  color: #fca5a5;
+}
+
+.recovery-line--warn .recovery-line-level,
+.recovery-line--warn .recovery-line-message {
+  color: #fde68a;
+}
+
+.recovery-line--debug .recovery-line-level,
+.recovery-line--debug .recovery-line-message {
+  color: #a5b4fc;
+}
+
+.recovery-line--info .recovery-line-level {
+  color: #86efac;
+}
+
+.recovery-empty {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  color: #64748b;
+  text-align: center;
+}
+
+.recovery-empty strong {
+  color: #e8edf5;
+}
+
+.recovery-details {
+  min-height: 82px;
+  max-height: 180px;
+  display: grid;
+  gap: 5px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  background: #0a0d13;
+  overflow: auto;
+}
+
+.recovery-details strong {
+  color: #7dd3fc;
+  font-size: 12px;
+}
+
+.recovery-details span {
+  color: #dbeafe;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.recovery-details pre {
+  margin: 4px 0 0;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  color: #cbd5e1;
+  background: #06080c;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow: auto;
+}
+
+@media (max-width: 820px) {
+  .recovery-root {
+    grid-template-columns: 1fr;
+  }
+
+  .recovery-sidebar {
+    display: none;
+  }
+
+  .recovery-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .recovery-search {
+    flex-basis: 100%;
+  }
+
+  .recovery-line {
+    grid-template-columns: 68px 54px minmax(0, 1fr);
+  }
+
+  .recovery-line-source {
+    display: none;
+  }
+}

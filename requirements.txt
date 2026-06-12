@@ -1,0 +1,16 @@
+# AgentMax Python runtime (closed beta) — install with: pip install -r requirements.txt
+structlog>=24.1
+fastapi>=0.115
+uvicorn[standard]>=0.30
+websockets>=12.0
+msgpack>=1.0
+httpx>=0.27
+aiohttp>=3.9
+redis[hiredis]>=5.0
+pillow>=10.0
+pydantic>=2.0
+pydantic-settings>=2.3
+aiosqlite>=0.19
+beautifulsoup4>=4.12
+pytest>=8.0
+pytest-asyncio>=0.23
