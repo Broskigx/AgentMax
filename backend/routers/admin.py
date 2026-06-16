@@ -32,6 +32,7 @@ from backend.models.audit import AuditEvent
 from backend.models.license import Activation, Plan
 from backend.models.session import Session, SessionStatus
 from backend.schemas.license import (
+    ActivationOut,
     AuditEventOut,
     LicenseCreate,
     LicenseOut,
@@ -161,7 +162,27 @@ async def list_licenses(
 ) -> Page:
     svc = LicenseService(db)
     licenses, total = await svc.list_licenses(status=status, q=q, limit=limit, offset=offset)
-    return Page.of([_serialize_license(lic) for lic in licenses], total, limit, offset)
+
+    # Batch-load active sessions for the returned licenses (one query, grouped
+    # by license_id) so each license carries its live sessions without N+1.
+    sessions_by_license: dict[uuid.UUID, list[Session]] = {}
+    license_ids = [lic.id for lic in licenses]
+    if license_ids:
+        sres = await db.execute(
+            select(Session).where(
+                Session.license_id.in_(license_ids),
+                Session.status == SessionStatus.ACTIVE,
+            )
+        )
+        for sess in sres.scalars().all():
+            sessions_by_license.setdefault(sess.license_id, []).append(sess)
+
+    return Page.of(
+        [_serialize_license(lic, sessions_by_license.get(lic.id, [])) for lic in licenses],
+        total,
+        limit,
+        offset,
+    )
 
 
 @router.post("/licenses", response_model=LicenseOut, status_code=201, dependencies=[AdminDep])
@@ -266,7 +287,12 @@ async def audit_log(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _serialize_license(lic) -> dict:
+def _serialize_license(lic, active_sessions=None) -> dict:
+    # `activations` is populated when the caller eager-loads the relationship
+    # (selectinload); with lazy="noload" an un-loaded relationship yields an
+    # empty list without emitting SQL, which is safe under async.
+    activations = getattr(lic, "activations", None) or []
+    sessions = active_sessions or []
     return {
         "id": lic.id,
         "key": lic.key,
@@ -280,6 +306,6 @@ def _serialize_license(lic) -> dict:
         "metadata": lic.metadata_,
         "created_at": lic.created_at,
         "updated_at": lic.updated_at,
-        "activations": [],
-        "active_sessions": [],
+        "activations": [ActivationOut.model_validate(a, from_attributes=True) for a in activations],
+        "active_sessions": [SessionOut.model_validate(s, from_attributes=True) for s in sessions],
     }

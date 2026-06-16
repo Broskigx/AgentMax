@@ -8,8 +8,17 @@ from datetime import datetime
 from typing import Any
 
 from backend.models.base import Base
-from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.sqlite import TEXT as SQLITE_TEXT
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -28,7 +37,7 @@ class Plan(Base):
     __tablename__ = "plans"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        SQLITE_TEXT, primary_key=True, default=_uuid
+        Uuid, primary_key=True, default=_uuid
     )
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
@@ -45,9 +54,9 @@ class Plan(Base):
 class License(Base):
     __tablename__ = "licenses"
 
-    id: Mapped[uuid.UUID] = mapped_column(SQLITE_TEXT, primary_key=True, default=_uuid)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
-    plan_id: Mapped[uuid.UUID] = mapped_column(SQLITE_TEXT, ForeignKey("plans.id"), nullable=False)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("plans.id"), nullable=False)
     status: Mapped[LicenseStatus] = mapped_column(
         Enum(LicenseStatus, values_callable=lambda e: [m.value for m in e]),
         nullable=False,
@@ -71,8 +80,8 @@ class License(Base):
 class Activation(Base):
     __tablename__ = "activations"
 
-    id: Mapped[uuid.UUID] = mapped_column(SQLITE_TEXT, primary_key=True, default=_uuid)
-    license_id: Mapped[uuid.UUID] = mapped_column(SQLITE_TEXT, ForeignKey("licenses.id"), nullable=False, index=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    license_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("licenses.id"), nullable=False, index=True)
     machine_fingerprint: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
     platform: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     os_version: Mapped[str] = mapped_column(String(128), nullable=False, default="")
