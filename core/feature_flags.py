@@ -57,6 +57,11 @@ class FeatureFlags:
     crash_reports: bool = False
     redis_queue: bool = False
     sqlite_storage: bool = True
+    # /goal autonomous autoloop — OFF by default in closed beta.
+    # Actions that modify system state (install_package, write_skill, create_venv, task)
+    # always require explicit human approval regardless of this flag.
+    goal_engine: bool = False
+    goal_engine_require_approval: bool = True
 
     @classmethod
     def from_mapping(

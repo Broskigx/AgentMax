@@ -160,14 +160,31 @@ def _build_decision_prompt(state: GoalState) -> str:
 # --------------------------------------------------------------------------- #
 
 
+# Actions that modify system state and require explicit human approval.
+_APPROVAL_REQUIRED_ACTIONS: frozenset[str] = frozenset(
+    {"task", "install_package", "create_venv", "write_skill", "run_shell"}
+)
+_APPROVAL_TIMEOUT_S = 120  # user has 2 min to approve/reject
+
+
 class GoalEngine:
     """
     Manages /goal mode: a Redis-backed autonomous loop.
 
+    Safety contract (beta):
+      - Feature flag `goal_engine` must be True to start a loop.
+      - When `require_approval=True` (default), every action that modifies
+        system state (task, install_package, create_venv, write_skill,
+        run_shell) is PAUSED and emits `goal.action_requires_approval`.
+        The loop resumes only after explicit human confirmation via
+        approve_action() / reject_action() or times out.
+
     Usage:
         engine = GoalEngine(redis_service, bus, agent_pool, ai_client)
         goal_id = await engine.start_goal("Build a todo app in ~/projects/todo")
-        # Loop runs in background; stop with:
+        # Later, when user approves a pending action:
+        engine.approve_action(goal_id, action_id)
+        # Cancel with:
         await engine.stop_goal(goal_id)
     """
 
@@ -179,14 +196,19 @@ class GoalEngine:
         ai_client: Any,
         *,
         max_iterations: int = _DEFAULT_MAX_ITER,
+        require_approval: bool = True,
     ) -> None:
         self._redis = redis_service
         self._bus = bus
         self._agent_pool = agent_pool
         self._ai = ai_client
         self._max_iterations = max_iterations
+        self._require_approval = require_approval
         self._supervisor = AgentToolSupervisor()
         self._tasks: dict[str, asyncio.Task] = {}  # goal_id → background Task
+        # Pending approvals: key = "{goal_id}:{action_id}"
+        self._pending_approvals: dict[str, asyncio.Event] = {}
+        self._approval_results: dict[str, bool] = {}
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -238,6 +260,74 @@ class GoalEngine:
 
     def list_active(self) -> list[str]:
         return list(self._tasks.keys())
+
+    def approve_action(self, goal_id: str, action_id: str) -> bool:
+        """Called by IPC when the user approves a pending action."""
+        key = f"{goal_id}:{action_id}"
+        ev = self._pending_approvals.get(key)
+        if ev:
+            self._approval_results[key] = True
+            ev.set()
+            return True
+        return False
+
+    def reject_action(self, goal_id: str, action_id: str) -> bool:
+        """Called by IPC when the user rejects a pending action."""
+        key = f"{goal_id}:{action_id}"
+        ev = self._pending_approvals.get(key)
+        if ev:
+            self._approval_results[key] = False
+            ev.set()
+            return True
+        return False
+
+    async def _request_approval(
+        self, goal_id: str, action_type: str, params: dict[str, Any]
+    ) -> bool:
+        """Emit approval request and wait for user response (or timeout)."""
+        import uuid as _uuid
+        action_id = str(_uuid.uuid4())[:8]
+        key = f"{goal_id}:{action_id}"
+        ev = asyncio.Event()
+        self._pending_approvals[key] = ev
+        self._approval_results.pop(key, None)
+
+        await self._emit(
+            "goal.action_requires_approval",
+            {
+                "goal_id": goal_id,
+                "action_id": action_id,
+                "action_type": action_type,
+                "params": params,
+                "timeout_s": _APPROVAL_TIMEOUT_S,
+                "message": (
+                    f"⚠️ GoalEngine quiere ejecutar **{action_type}**. "
+                    "Aprueba o rechaza en la UI antes de continuar."
+                ),
+            },
+        )
+        log.info(
+            "goal.waiting_approval",
+            goal_id=goal_id[:8],
+            action_type=action_type,
+            action_id=action_id,
+        )
+
+        try:
+            await asyncio.wait_for(asyncio.shield(ev.wait()), timeout=_APPROVAL_TIMEOUT_S)
+            approved = self._approval_results.get(key, False)
+        except (TimeoutError, asyncio.CancelledError):
+            approved = False
+            log.warning("goal.approval_timeout", goal_id=goal_id[:8], action_type=action_type)
+        finally:
+            self._pending_approvals.pop(key, None)
+            self._approval_results.pop(key, None)
+
+        await self._emit(
+            "goal.action_decision",
+            {"goal_id": goal_id, "action_id": action_id, "approved": approved},
+        )
+        return approved
 
     # ------------------------------------------------------------------ #
     # Autoloop                                                             #
@@ -384,6 +474,19 @@ class GoalEngine:
             "run_shell": self._action_run_shell,
             "message": self._action_message,
         }
+
+        # Gate: require explicit human approval for any system-modifying action
+        if self._require_approval and action_type in _APPROVAL_REQUIRED_ACTIONS:
+            approved = await self._request_approval(state.goal_id, action_type, params)
+            if not approved:
+                return GoalIteration(
+                    iteration=state.iterations,
+                    action_type=action_type,
+                    action_params=params,
+                    result="Action skipped — not approved by user (or timed out).",
+                    success=False,
+                )
+
         handler = handlers.get(action_type, self._action_unknown)
         try:
             success, result = await handler(params, state)
