@@ -1,6 +1,7 @@
-﻿# Secrets
+# Secrets
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.crt
@@ -43,6 +44,9 @@ target/
 # Logs
 *.log
 logs/
+diagnostics/agentmax-diagnostics-*/
+diagnostics/agentmax-diagnostics-*.zip
+diagnostics/smoke/
 
 # OS
 .DS_Store
