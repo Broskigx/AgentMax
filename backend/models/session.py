@@ -7,8 +7,7 @@ import uuid
 from datetime import datetime
 
 from backend.models.base import Base
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.sqlite import TEXT as SQLITE_TEXT
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -26,9 +25,9 @@ def _uuid() -> uuid.UUID:
 class Session(Base):
     __tablename__ = "sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(SQLITE_TEXT, primary_key=True, default=_uuid)
-    license_id: Mapped[uuid.UUID] = mapped_column(SQLITE_TEXT, ForeignKey("licenses.id"), nullable=False, index=True)
-    activation_id: Mapped[uuid.UUID] = mapped_column(SQLITE_TEXT, ForeignKey("activations.id"), nullable=False, index=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    license_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("licenses.id"), nullable=False, index=True)
+    activation_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("activations.id"), nullable=False, index=True)
     status: Mapped[SessionStatus] = mapped_column(
         Enum(SessionStatus, values_callable=lambda e: [m.value for m in e]),
         nullable=False,

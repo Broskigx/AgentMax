@@ -98,6 +98,9 @@ class Automation:
     description: str | None
     automation_type: AutomationType
     trigger_type: TriggerType
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
 
     steps: list[AutomationStep] = field(default_factory=list)
 
@@ -106,10 +109,6 @@ class Automation:
 
     is_active: bool = True
     is_public: bool = False
-
-    created_by: str
-    created_at: datetime
-    updated_at: datetime
 
     schedule: str | None = None  # Cron expression
     webhook_path: str | None = None
@@ -146,11 +145,11 @@ class ExecutionContext:
     automation_id: str
     trigger_type: TriggerType
     trigger_data: dict[str, Any]
+    started_at: datetime
 
     variables: dict[str, Any] = field(default_factory=dict)
     state: dict[str, Any] = field(default_factory=dict)
 
-    started_at: datetime
     completed_at: datetime | None = None
 
     current_step_index: int = 0
@@ -276,9 +275,10 @@ class ActionExecutor:
     async def _execute_log(self, step: AutomationStep, context: ExecutionContext) -> dict[str, Any]:
         """Execute log action"""
         message = self._resolve_variables(step.config.get("message", ""), context)
-        level = step.config.get("level", "info")
+        level = str(step.config.get("level", "info")).lower()
 
-        log.log(level, "automation_log", message=message, execution_id=context.execution_id)
+        log_method = getattr(log, level, log.info)
+        log_method("automation_log", message=message, execution_id=context.execution_id)
 
         return {"logged": True, "message": message}
 
@@ -428,6 +428,63 @@ class ActionExecutor:
         return False
 
 
+def _cron_field_matches(field: str, value: int, min_value: int, max_value: int) -> bool:
+    """Match a single standard-cron field (``*``, ``*/n``, ``a-b``, ``a,b,c``, ``n``)."""
+    field = field.strip()
+    if field in ("*", "?"):
+        return True
+    for part in field.split(","):
+        part = part.strip()
+        step = 1
+        if "/" in part:
+            base, _, step_str = part.partition("/")
+            if not step_str.isdigit() or int(step_str) <= 0:
+                continue
+            step = int(step_str)
+            part = base.strip() or "*"
+        if part in ("*", "?"):
+            lo, hi = min_value, max_value
+        elif "-" in part:
+            lo_str, _, hi_str = part.partition("-")
+            if not (lo_str.isdigit() and hi_str.isdigit()):
+                continue
+            lo, hi = int(lo_str), int(hi_str)
+        elif part.isdigit():
+            lo = hi = int(part)
+        else:
+            continue
+        if lo > hi:
+            continue
+        if value < lo or value > hi:
+            continue
+        if (value - lo) % step == 0:
+            return True
+    return False
+
+
+def cron_matches(expression: str, when: datetime) -> bool:
+    """Return True if a 5-field cron expression is due at ``when`` (minute precision).
+
+    Fields: ``minute hour day-of-month month day-of-week`` (Sunday = 0 or 7).
+    Supports ``*``, ``*/n``, ranges ``a-b``, and lists ``a,b,c``.
+    """
+    fields = expression.split()
+    if len(fields) != 5:
+        return False
+    minute, hour, dom, month, dow = fields
+    dow_value = when.isoweekday() % 7  # Mon..Sun -> 1..6,0  (Sunday = 0)
+    return (
+        _cron_field_matches(minute, when.minute, 0, 59)
+        and _cron_field_matches(hour, when.hour, 0, 23)
+        and _cron_field_matches(dom, when.day, 1, 31)
+        and _cron_field_matches(month, when.month, 1, 12)
+        and (
+            _cron_field_matches(dow, dow_value, 0, 6)
+            or _cron_field_matches(dow, 7 if dow_value == 0 else dow_value, 0, 7)
+        )
+    )
+
+
 class AutomationEngine:
     """Main automation execution engine"""
 
@@ -436,7 +493,37 @@ class AutomationEngine:
         self.executor = ActionExecutor()
         self._active_executions: dict[str, ExecutionContext] = {}
         self._scheduled_tasks: dict[str, asyncio.Task] = {}
+        # In-memory registry of known automations, keyed by automation_id.
+        self._automations: dict[str, Automation] = {}
+        # Minute-truncated timestamp of the last scheduled fire per automation,
+        # so a cron entry runs at most once per matching minute.
+        self._last_scheduled_run: dict[str, datetime] = {}
         self._running = False
+
+    # ── Registry ──────────────────────────────────────────────────────────────
+
+    def register_automation(self, automation: Automation) -> None:
+        """Register (or replace) an automation so it can be executed or scheduled."""
+        self._automations[automation.automation_id] = automation
+        log.info(
+            "automation_registered",
+            automation_id=automation.automation_id,
+            name=automation.name,
+            trigger_type=automation.trigger_type.value,
+        )
+
+    def unregister_automation(self, automation_id: str) -> bool:
+        """Remove an automation from the registry. Returns True if it existed."""
+        self._last_scheduled_run.pop(automation_id, None)
+        return self._automations.pop(automation_id, None) is not None
+
+    def get_automation(self, automation_id: str) -> Automation | None:
+        """Return a registered automation by id, or None."""
+        return self._automations.get(automation_id)
+
+    def list_automations(self) -> list[Automation]:
+        """Return all registered automations."""
+        return list(self._automations.values())
 
     async def start(self):
         """Start the automation engine"""
@@ -468,15 +555,19 @@ class AutomationEngine:
     ) -> ExecutionResult:
         """Execute an automation"""
 
-        # Create execution context
+        # Create execution context. Trigger data is seeded into the variable
+        # scope so steps can reference inputs via {{key}} (and the full payload
+        # via {{trigger.key}}).
         execution_id = str(uuid4())
+        trigger_data = trigger_data or {}
         context = ExecutionContext(
             execution_id=execution_id,
             automation_id=automation.automation_id,
             trigger_type=trigger_type or automation.trigger_type,
-            trigger_data=trigger_data or {},
+            trigger_data=trigger_data,
             started_at=datetime.now(UTC),
             status=ExecutionStatus.RUNNING,
+            variables={"trigger": trigger_data, **trigger_data},
         )
 
         self._active_executions[execution_id] = context
@@ -545,22 +636,14 @@ class AutomationEngine:
     async def execute_workflow(
         self, workflow_id: str, input_data: dict[str, Any]
     ) -> ExecutionResult:
-        """Execute a workflow by ID"""
-        # This would typically load from database
-        # For now, return a mock result
+        """Execute a previously registered workflow/automation by id."""
+        automation = self._automations.get(workflow_id)
+        if automation is None:
+            raise KeyError(f"Automation not found: {workflow_id}")
 
-        automation = Automation(
-            automation_id=workflow_id,
-            name="Workflow",
-            description=None,
-            automation_type=AutomationType.WORKFLOW,
-            trigger_type=TriggerType.MANUAL,
-            created_by="system",
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+        return await self.execute_automation(
+            automation, input_data, trigger_type=TriggerType.API_CALL
         )
-
-        return await self.execute_automation(automation, input_data)
 
     async def get_execution_status(self, execution_id: str) -> ExecutionContext | None:
         """Get status of a running execution"""
@@ -576,19 +659,50 @@ class AutomationEngine:
         return False
 
     async def _scheduler_loop(self):
-        """Main scheduler loop for scheduled automations"""
+        """Main scheduler loop: fire registered SCHEDULE automations when due."""
+        interval = max(1, self.config.schedule_check_interval_seconds)
         while self._running:
             try:
-                # Check for due automations
-                # In production, query database for due schedules
-
-                await asyncio.sleep(10)  # Check every 10 seconds
+                await self._run_due_schedules(datetime.now(UTC))
+                await asyncio.sleep(interval)
 
             except asyncio.CancelledError:
                 break
             except Exception as exc:
                 log.error("scheduler_loop_error", error=str(exc))
                 await asyncio.sleep(5)
+
+    async def _run_due_schedules(self, now: datetime) -> int:
+        """Fire every scheduled automation whose cron matches ``now``.
+
+        Returns the number of automations launched. Each automation runs at most
+        once per matching minute (deduplicated via ``_last_scheduled_run``).
+        """
+        launched = 0
+        current_minute = now.replace(second=0, microsecond=0)
+
+        for automation in list(self._automations.values()):
+            if not automation.is_active:
+                continue
+            if automation.trigger_type != TriggerType.SCHEDULE or not automation.schedule:
+                continue
+            if not cron_matches(automation.schedule, now):
+                continue
+            if self._last_scheduled_run.get(automation.automation_id) == current_minute:
+                continue
+
+            self._last_scheduled_run[automation.automation_id] = current_minute
+            log.info(
+                "scheduled_automation_triggered",
+                automation_id=automation.automation_id,
+                schedule=automation.schedule,
+            )
+            asyncio.create_task(
+                self.execute_automation(automation, {}, trigger_type=TriggerType.SCHEDULE)
+            )
+            launched += 1
+
+        return launched
 
 
 @dataclass
@@ -615,7 +729,10 @@ class AutomationAPIRouter:
         async def execute_automation(
             automation_id: str, trigger_data: dict[str, Any] | None = None
         ):
-            result = await self.engine.execute_workflow(automation_id, trigger_data or {})
+            try:
+                result = await self.engine.execute_workflow(automation_id, trigger_data or {})
+            except KeyError:
+                raise HTTPException(status_code=404, detail="Automation not found")
 
             return {
                 "execution_id": result.execution_id,
