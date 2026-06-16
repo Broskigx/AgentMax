@@ -256,7 +256,6 @@ class GoalEngine:
         return True
 
     def get_state(self, goal_id: str) -> GoalState | None:
-        """Retrieve goal state from Redis."""
         return self._load_state(goal_id)
 
     def list_active(self) -> list[str]:
@@ -658,14 +657,14 @@ class GoalEngine:
         return False, f"Unknown action type; params={params}"
 
     # ------------------------------------------------------------------ #
-    # Redis persistence                                                    #
+    # State persistence (Redis when available, SQLite fallback)           #
     # ------------------------------------------------------------------ #
 
     def _save_state(self, state: GoalState) -> None:
         try:
             self._redis.setTaskState(state.goal_id, state.to_dict(), ttl_sec=_REDIS_TTL)
         except Exception as exc:
-            log.warning("goal.redis_save_failed", error=str(exc))
+            log.warning("goal.state_save_failed", error=str(exc))
 
     def _load_state(self, goal_id: str) -> GoalState | None:
         try:
@@ -673,7 +672,7 @@ class GoalEngine:
             if data:
                 return GoalState.from_dict(data)
         except Exception as exc:
-            log.warning("goal.redis_load_failed", error=str(exc))
+            log.warning("goal.state_load_failed", error=str(exc))
         return None
 
     # ------------------------------------------------------------------ #
