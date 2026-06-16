@@ -47,6 +47,9 @@ diagnostics/agentmax-diagnostics-*/
 diagnostics/agentmax-diagnostics-*.zip
 diagnostics/smoke/
 
+# Claude Code internal
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
