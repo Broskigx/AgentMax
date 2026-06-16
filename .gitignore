@@ -42,6 +42,12 @@ __pycache__/
 # Rust / Tauri
 target/
 
+# Data / generated databases
+data/
+*.db
+*.sqlite
+*.sqlite3
+
 # Logs
 *.log
 logs/
