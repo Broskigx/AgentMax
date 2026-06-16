@@ -182,6 +182,7 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
 
     const canSend = Boolean(value.trim() || attachments.length);
     const isDisabled = disabled || isLoading;
+    const isGoalMode = /^\s*\/goal\b/i.test(value);
 
     const submit = useCallback(() => {
       if (!canSend || isDisabled) return;
@@ -208,6 +209,7 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
             'focus-within:border-orange-400/35 focus-within:shadow-[0_16px_44px_rgba(0,0,0,0.38),0_0_0_3px_rgba(249,115,22,0.06)]',
             dragging && 'border-orange-400/60 bg-orange-400/[0.06]',
             isLoading && 'border-orange-400/30',
+            isGoalMode && 'border-orange-400/50 shadow-[0_16px_44px_rgba(0,0,0,0.38),0_0_0_2px_rgba(251,146,60,0.12)]',
             className,
           )}
           onPaste={handlePaste}
@@ -257,6 +259,24 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
             ) : null}
           </AnimatePresence>
 
+          <AnimatePresence>
+            {isGoalMode ? (
+              <motion.div
+                key="goal-badge"
+                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, height: 'auto', marginBottom: 4 }}
+                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="flex items-center gap-1.5 px-3 pt-1"
+              >
+                <span className="inline-flex items-center gap-1 rounded-md border border-orange-400/30 bg-orange-400/10 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-orange-300/90 shadow-[0_0_8px_rgba(251,146,60,0.2)]">
+                  ⚡ Goal Mode
+                </span>
+                <span className="text-[10px] text-white/30">Autoloop activo hasta completar el objetivo</span>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
           <textarea
             ref={textareaRef}
             value={value}
@@ -267,7 +287,7 @@ export const PromptInputBox = forwardRef<PromptInputBoxHandle, PromptInputBoxPro
                 submit();
               }
             }}
-            placeholder={isLoading ? 'AgentMax está trabajando...' : modePlaceholder}
+            placeholder={isLoading ? 'AgentMax está trabajando...' : isGoalMode ? '/goal <objetivo>  —  Esc o borra para salir' : modePlaceholder}
             rows={1}
             disabled={isDisabled}
             className="block min-h-12 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-[13px] leading-6 text-zinc-100 outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-55"
