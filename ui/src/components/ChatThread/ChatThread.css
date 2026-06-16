@@ -263,7 +263,54 @@
   background: rgba(255,255,255,0.03);
 }
 
-/* ── Input area ─────────────────────────────────────────────────── */
+/* ── Slash command tokens (/goal, /stop, etc.) ──────────────────── */
+.ct-slash-cmd {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 5px;
+  padding: 1px 6px 0;
+  margin: 0 1px;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  vertical-align: baseline;
+}
+
+/* Goal-specific command gets a subtle amber tint */
+.ct-slash-cmd--goal {
+  color: #fff;
+  background: rgba(251, 146, 60, 0.15);
+  border-color: rgba(251, 146, 60, 0.35);
+  text-shadow: 0 0 10px rgba(251, 146, 60, 0.35);
+}
+
+/* Goal active badge shown on messages that activated goal mode */
+.ct-goal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(251, 146, 60, 0.9);
+  background: rgba(251, 146, 60, 0.09);
+  border: 1px solid rgba(251, 146, 60, 0.22);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-bottom: 5px;
+}
+.ct-goal-badge::before {
+  content: '⚡';
+  font-style: normal;
+}
+
+
 .ct-input-area {
   padding: 12px 14px 14px;
   border-top: 1px solid rgba(255,255,255,0.06);
