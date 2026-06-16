@@ -43,7 +43,7 @@
       "../../scripts/run_daemon.py",
       "../../agentmax.config.json",
       "../../beta_config.example.json"
-    ]
+    ],
     "windows": {
       "webviewInstallMode": { "type": "skip" }
     }

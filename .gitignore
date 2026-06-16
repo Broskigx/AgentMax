@@ -7,6 +7,7 @@
 *secret*
 *token*
 !core/security/token_manager.py
+!ui/src/lib/tokenService.ts
 *credential*
 google_client_secret.json
 service-account.json
