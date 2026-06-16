@@ -40,7 +40,7 @@ cd C:\path\to\AgentMax   ;# or wherever you installed it - paths are resolved au
 .\scripts\setup.ps1
 ```
 
-This creates `.venv`, installs `requirements.txt`, installs UI deps, and runs `cargo check`.
+This creates `.venv`, installs `requirements.txt`, installs UI deps, creates `.env` from `.env.example` when needed, and runs `cargo check`.
 
 ## Start AgentMax (recommended dev flow)
 
@@ -63,7 +63,7 @@ python scripts\agentmax_server.py
 **Terminal 2 — desktop UI**
 
 ```powershell
-cd C:\path\to\AgentMax   ;# or wherever you installed it - paths are resolved automatically for any user\ui   ;# dev only - production resolves everything relative to the installed exe + %LOCALAPPDATA%\AgentMax
+cd C:\path\to\AgentMax\ui   ;# dev only - production resolves paths relative to the installed exe + %LOCALAPPDATA%\AgentMax
 $env:AGENTMAX_SKIP_BACKEND_SPAWN = "1"
 npm run tauri dev
 ```
@@ -117,10 +117,11 @@ Computer control requires explicit in-chat consent even when flags are enabled l
 
 ## IPC auth (closed beta)
 
-- Default: **OFF** (`AGENTMAX_IPC_AUTH=0`)
+- Default: **ON** (`AGENTMAX_IPC_AUTH=1`)
 - Shared token file: `%LOCALAPPDATA%\AgentMax\ipc_token`
 - Legacy `ipc.key` is migrated automatically
-- If enabled, the UI sends `X-AgentMax-Token` on `:7790` requests
+- When enabled, the UI sends `X-AgentMax-Token` on `:7790` requests
+- Disable only for isolated maintainer diagnostics with `AGENTMAX_IPC_AUTH=0`
 
 ## Logs and diagnostics
 
