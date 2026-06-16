@@ -23,6 +23,7 @@ cookies.json
 *.gguf
 *.onnx
 models/
+!backend/models/
 AgentPilot-Train-Qwen3-32B/outputs/
 
 # Node / web
