@@ -20,6 +20,7 @@ MODEL_EXTENSIONS = {
     ".safetensors",
 }
 GENERATED_EXTENSIONS = {".db", ".dll", ".exe", ".msi", ".sqlite", ".zip"}
+SAFE_ENV_EXAMPLES = {".env.example"}
 SECRET_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"),
@@ -52,7 +53,7 @@ def main() -> int:
         suffix = path.suffix.lower()
         if suffix in MODEL_EXTENSIONS:
             errors.append(f"tracked model/weight: {relative}")
-        if lowered == ".env" or lowered.startswith(".env."):
+        if (lowered == ".env" or lowered.startswith(".env.")) and lowered not in SAFE_ENV_EXAMPLES:
             errors.append(f"tracked environment file: {relative}")
         if path.exists() and path.stat().st_size > MAX_BYTES:
             errors.append(
