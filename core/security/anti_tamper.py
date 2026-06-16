@@ -210,9 +210,9 @@ def snapshot_critical_functions() -> None:
     and task orchestration. LicenseManager functions are intentionally NOT used
     here because entitlements are currently disabled in runtime.
     """
+    from core.agents import supervisor as _sup
     from core.security import permission_manager as _pm
     from core.tools import executor as _te
-    from core.agents import supervisor as _sup
 
     targets = {
         "PermissionManager.grant": _pm.PermissionManager.grant,
@@ -351,9 +351,9 @@ def _check_code_integrity() -> bool:
     if not _CODE_SENTINELS:
         return False  # sentinels not yet taken (too early)
 
+    from core.agents import supervisor as _sup
     from core.security import permission_manager as _pm
     from core.tools import executor as _te
-    from core.agents import supervisor as _sup
 
     current = {
         "PermissionManager.grant": _pm.PermissionManager.grant,

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,7 +64,7 @@ class FeatureFlags:
         data: Mapping[str, Any] | None,
         *,
         environ: Mapping[str, str] | None = None,
-    ) -> "FeatureFlags":
+    ) -> FeatureFlags:
         values = asdict(cls())
         for key, value in (data or {}).items():
             if key in values:

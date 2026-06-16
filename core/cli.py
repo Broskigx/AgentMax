@@ -18,7 +18,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return tools_main(args[1:])
     if args and args[0] == "serve":
         import runpy
-        import sys
         from pathlib import Path
 
         root = Path(__file__).resolve().parents[1]

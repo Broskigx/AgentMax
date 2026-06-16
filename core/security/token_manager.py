@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Optional
 
 
 class TokenLimitError(Exception):
@@ -95,7 +94,7 @@ class TokenManager:
             remaining=max(0, cap - consumed) if cap > 0 else -1,
         )
 
-    def reset(self, plan: Optional[str] = None, user: Optional[str] = None) -> None:
+    def reset(self, plan: str | None = None, user: str | None = None) -> None:
         """Reset usage counters (call at daily rollover)."""
         with self._lock:
             if plan is None and user is None:

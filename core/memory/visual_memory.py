@@ -286,7 +286,7 @@ class VisualMemory:
 
         best_match: tuple[int, int, int, int, float] | None = None
 
-        for tmpl_path, tmpl_label in candidates:
+        for tmpl_path, _tmpl_label in candidates:
             try:
                 template = Image.open(tmpl_path).convert("RGB")
                 tw, th = template.size

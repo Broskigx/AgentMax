@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import shlex
 import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
+
+import structlog
 
 from core.config import get_config
 from core.feature_flags import FeatureFlags, disabled_features
@@ -39,6 +40,8 @@ from core.tools.risk import ToolRiskAnalyzer
 from core.tools.router import ToolRouter
 from core.tools.state import ToolStateManager
 from core.tools.validator import ToolValidator
+
+log = structlog.get_logger(__name__)
 
 
 class ToolExecutor:
@@ -1120,10 +1123,6 @@ class ToolExecutor:
         cwd: Path,
         timeout_ms: int,
     ) -> ToolResult:
-        import structlog
-
-        log = structlog.get_logger(__name__)
-
         try:
             proc = await asyncio.to_thread(
                 subprocess.run,
@@ -1153,19 +1152,6 @@ class ToolExecutor:
             return self.normalizer.failure(request, "shell.timeout", "Shell command timed out")
         except Exception as exc:
             return self.normalizer.failure(request, "shell.error", str(exc))
-
-    def _start_process(self, target: str) -> int | None:
-        # Deprecated for computer control. Use vision + computer tool (mouse) only.
-        # Kept for other shell fallbacks, but apps must be opened visually.
-        log.warning("executor.start_process_deprecated", target=target, reason="prefer vision+mouse for apps")
-        if Path(target).exists():
-            proc = subprocess.Popen([target], shell=False)
-            return proc.pid
-        if self._is_windows():
-            proc = subprocess.Popen(["cmd", "/c", "start", "", target], shell=False)
-            return proc.pid
-        proc = subprocess.Popen(shlex.split(target), shell=False)
-        return proc.pid
 
     @staticmethod
     def _is_windows() -> bool:

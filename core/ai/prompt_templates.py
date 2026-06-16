@@ -89,7 +89,7 @@ TOOL CATALOG — ALWAYS CHOOSE THE RIGHT TOOL
    EXAMPLE: {"type": "wait", "duration_sec": 1.0}
 
 8. computer — Main tool for all desktop control (designed to be as close as possible to OpenAI Computer Use).
-   WHEN TO USE: Any mouse movement, click, typing, hotkey, or screen interaction. 
+   WHEN TO USE: Any mouse movement, click, typing, hotkey, or screen interaction.
    You will receive screenshots. Analyze the image visually and output precise actions using pixel coordinates from that screenshot.
    Output under the "computer" tool as a list of actions:
      {"actions": [ {"action": "move", "x": 512, "y": 340}, {"action": "click", "x": 512, "y": 340, "button": "left"}, {"action": "type", "text": "hello"} , {"action": "key", "text": "enter"} ]}

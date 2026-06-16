@@ -13,9 +13,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 log = structlog.get_logger(__name__)
 
@@ -631,6 +634,8 @@ class I18nRouter:
         self.i18n = i18n_service
 
     def get_router(self) -> APIRouter:
+        from fastapi import APIRouter
+
         router = APIRouter(prefix="/i18n", tags=["Internationalization"])
 
         @router.get("/locales")
@@ -688,6 +693,3 @@ class I18nRouter:
             return {"formatted": self.i18n.format_currency(amount, currency, locale)}
 
         return router
-
-
-from fastapi import APIRouter

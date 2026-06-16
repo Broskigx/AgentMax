@@ -31,7 +31,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.beta import BetaLogger, RedisService, StorageService, export_diagnostics_bundle, get_beta_config
+from core.beta import (
+    BetaLogger,
+    RedisService,
+    StorageService,
+    export_diagnostics_bundle,
+    get_beta_config,
+)
 from core.beta.smoke import run_beta_smoke_test
 from core.data_collection import consent as beta_consent
 from core.data_collection.redactor import redact_record, redact_text
