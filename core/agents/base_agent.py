@@ -169,8 +169,8 @@ class BaseAgent(ABC):
                 self._state = AgentState.ERROR
                 await asyncio.sleep(0.5)
 
-    async def _tick(self) -> None:
-        pass
+    async def _tick(self) -> None:  # noqa: B027 - optional per-loop hook, default no-op
+        """Optional periodic hook run on each agent loop iteration."""
 
     # ──────────────────────────────────────────────────────────────
     # Helpers

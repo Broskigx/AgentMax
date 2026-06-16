@@ -14,10 +14,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+import httpx
 import structlog
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 log = structlog.get_logger(__name__)
 
@@ -723,6 +727,8 @@ class AutomationAPIRouter:
         self.engine = engine
 
     def get_router(self) -> APIRouter:
+        from fastapi import APIRouter, HTTPException
+
         router = APIRouter(prefix="/automations", tags=["Automations"])
 
         @router.post("/execute/{automation_id}")
@@ -732,7 +738,9 @@ class AutomationAPIRouter:
             try:
                 result = await self.engine.execute_workflow(automation_id, trigger_data or {})
             except KeyError:
-                raise HTTPException(status_code=404, detail="Automation not found")
+                raise HTTPException(
+                    status_code=404, detail="Automation not found"
+                ) from None
 
             return {
                 "execution_id": result.execution_id,
@@ -764,7 +772,3 @@ class AutomationAPIRouter:
             return {"status": "cancelled"}
 
         return router
-
-
-import httpx
-from fastapi import APIRouter, HTTPException

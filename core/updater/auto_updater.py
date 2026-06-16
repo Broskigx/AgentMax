@@ -14,9 +14,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import aiohttp
 import structlog
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 log = structlog.get_logger(__name__)
 
@@ -601,6 +605,8 @@ class UpdateRouter:
         self.update_manager = update_manager
 
     def get_router(self) -> APIRouter:
+        from fastapi import APIRouter, Body
+
         router = APIRouter(prefix="/updates", tags=["Updates"])
 
         @router.get("/check")
@@ -652,6 +658,3 @@ class UpdateRouter:
             }
 
         return router
-
-
-from fastapi import APIRouter, Body

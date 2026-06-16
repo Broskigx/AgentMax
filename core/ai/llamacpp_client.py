@@ -375,6 +375,6 @@ class LlamaCppSidecarClient(BaseAIClient):
             self._process.terminate()
             try:
                 await asyncio.wait_for(self._process.wait(), timeout=2)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._process.kill()
                 await self._process.wait()

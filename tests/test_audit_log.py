@@ -95,5 +95,5 @@ class TestAuditLog:
         await asyncio.sleep(0.2)
         await audit.stop()
 
-        lines = [l for l in log_path.read_text().strip().split("\n") if l]
+        lines = [ln for ln in log_path.read_text().strip().split("\n") if ln]
         assert len(lines) == 5

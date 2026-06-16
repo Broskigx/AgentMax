@@ -45,9 +45,8 @@ class AgentMaxPlugin(ABC):
         """
         return False
 
-    async def on_unload(self) -> None:
-        """Called when the plugin is removed."""
-        pass
+    async def on_unload(self) -> None:  # noqa: B027 - optional lifecycle hook, default no-op
+        """Called when the plugin is removed. Override to release resources."""
 
     def matches(self, description: str) -> bool:
         """Quick keyword check -- override for more sophisticated matching."""

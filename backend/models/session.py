@@ -5,10 +5,14 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from backend.models.base import Base
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from backend.models.license import Activation, License
 
 
 class SessionStatus(str, enum.Enum):
@@ -46,5 +50,5 @@ class Session(Base):
     invalidation_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
-    license: Mapped["backend.models.license.License"] = relationship("License", foreign_keys=[license_id], lazy="noload")
-    activation: Mapped["backend.models.license.Activation"] = relationship("Activation", foreign_keys=[activation_id], lazy="noload")
+    license: Mapped[License] = relationship("License", foreign_keys=[license_id], lazy="noload")
+    activation: Mapped[Activation] = relationship("Activation", foreign_keys=[activation_id], lazy="noload")

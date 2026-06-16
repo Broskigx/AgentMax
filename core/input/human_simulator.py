@@ -292,7 +292,7 @@ class HumanInputSimulator:
             raise ValueError("drag_path requires at least two points")
         normalized = [self._clamp(int(point[0]), int(point[1])) for point in points]
         interpolated: list[tuple[int, int]] = [normalized[0]]
-        for start, end in zip(normalized, normalized[1:]):
+        for start, end in zip(normalized, normalized[1:], strict=False):
             distance = math.hypot(end[0] - start[0], end[1] - start[1])
             steps = max(2, int(distance / 16))
             for index in range(1, steps + 1):
