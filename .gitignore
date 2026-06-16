@@ -6,6 +6,7 @@
 *.crt
 *secret*
 *token*
+!core/security/token_manager.py
 *credential*
 google_client_secret.json
 service-account.json
