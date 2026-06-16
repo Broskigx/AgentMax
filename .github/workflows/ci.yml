@@ -2,7 +2,7 @@ name: AgentMax CI
 
 on:
   push:
-    branches: [main, master, fix/**, feat/**, feature/**]
+    branches: [main, master, fix/**, feat/**, feature/**, claude/**]
   pull_request:
     branches: [main, master]
 

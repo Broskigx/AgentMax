@@ -27,6 +27,14 @@ models/
 !backend/models/
 AgentPilot-Train-Qwen3-32B/outputs/
 
+# Beta release artifacts and training data (never tracked in git)
+BetaAgentMax/release/
+BetaAgentMax/data/
+BetaAgentMax/**/*.exe
+BetaAgentMax/**/*.zip
+BetaAgentMax/**/*.bat
+BetaAgentMax/unsloth_train*.py
+
 # Node / web
 node_modules/
 dist/
