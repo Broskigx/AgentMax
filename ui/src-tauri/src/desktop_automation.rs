@@ -479,12 +479,47 @@ impl DesktopAutomationService {
                 self.runtime.paused,
             );
         }
-        let _min_confidence = args.min_confidence.unwrap_or(0.55).clamp(0.0, 1.0);
-        DesktopToolResult::fail(
-            "locate_on_screen is not implemented in the Tauri-native layer yet; route through Python screen.locate_element or connect the OCR/accessibility bridge.",
-            started,
-            self.runtime.paused,
-        )
+        let min_confidence = args.min_confidence.unwrap_or(0.55).clamp(0.0, 1.0);
+        let (png_bytes, _w, _h) = match capture_png_native() {
+            Ok(result) => result,
+            Err(e) => return DesktopToolResult::fail(e, started, self.runtime.paused),
+        };
+        // Write screenshot to a temp file for tesseract
+        let mut tmp_path = std::env::temp_dir();
+        tmp_path.push(format!("AgentMax-ocr-{}.png", now_millis()));
+        if let Err(e) = std::fs::write(&tmp_path, &png_bytes) {
+            return DesktopToolResult::fail(
+                format!("Could not write temp screenshot for OCR: {e}"),
+                started,
+                self.runtime.paused,
+            );
+        }
+        let tmp_str = tmp_path.to_string_lossy().to_string();
+        let tsv_result = run_command("tesseract", &[&tmp_str, "stdout", "--psm", "3", "tsv"]);
+        let _ = std::fs::remove_file(&tmp_path);
+        let tsv_bytes = match tsv_result {
+            Ok(b) => b,
+            Err(e) => {
+                return DesktopToolResult::fail(
+                    format!(
+                        "tesseract not found or failed — install with: \
+                        https://github.com/tesseract-ocr/tesseract#installing-tesseract: {e}"
+                    ),
+                    started,
+                    self.runtime.paused,
+                );
+            }
+        };
+        let tsv = String::from_utf8_lossy(&tsv_bytes);
+        let matches = parse_tesseract_tsv(&tsv, query, min_confidence);
+        let result = LocateOnScreenResult {
+            query: query.to_string(),
+            matches,
+            source: "tesseract-ocr".to_string(),
+            timestamp: now_millis(),
+        };
+        self.runtime.last_action = Some("locate_on_screen".to_string());
+        DesktopToolResult::ok(result, started, self.runtime.paused)
     }
 
     pub fn get_mouse_position(&self) -> DesktopToolResult<MousePosition> {
@@ -1016,7 +1051,8 @@ fn shortcut_modifier() -> &'static str {
 fn default_tool_catalog() -> Vec<ToolCatalogItem> {
     let platform = DesktopPlatform::current();
     let input_implemented = platform == DesktopPlatform::Windows
-        || (platform == DesktopPlatform::Linux && !is_wayland());
+        || platform == DesktopPlatform::Linux
+        || platform == DesktopPlatform::Macos;
     let screenshot_implemented = platform == DesktopPlatform::Windows
         || platform == DesktopPlatform::Macos
         || platform == DesktopPlatform::Linux;
@@ -1035,7 +1071,7 @@ fn default_tool_catalog() -> Vec<ToolCatalogItem> {
             name: "Locate On Screen".into(),
             category: "screen".into(),
             permission: "screen_capture_enabled".into(),
-            implemented: false,
+            implemented: screenshot_implemented,
             risk_level: "low".into(),
             manual_test: false,
         },
@@ -1098,7 +1134,7 @@ fn default_tool_catalog() -> Vec<ToolCatalogItem> {
             name: "Type Text".into(),
             category: "keyboard".into(),
             permission: "keyboard_control_enabled".into(),
-            implemented: input_implemented || platform == DesktopPlatform::Macos,
+            implemented: input_implemented,
             risk_level: "high".into(),
             manual_test: true,
         },
@@ -1107,7 +1143,7 @@ fn default_tool_catalog() -> Vec<ToolCatalogItem> {
             name: "Key Combo".into(),
             category: "keyboard".into(),
             permission: "keyboard_control_enabled".into(),
-            implemented: input_implemented || platform == DesktopPlatform::Macos,
+            implemented: input_implemented,
             risk_level: "high".into(),
             manual_test: true,
         },
@@ -1314,6 +1350,50 @@ fn encode_png(rgba: &[u8], w: u32, h: u32) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Parse tesseract TSV output and return matching `ScreenMatch` items.
+/// TSV columns (0-based): level, page_num, block_num, par_num, line_num, word_num,
+/// left, top, width, height, conf, text
+fn parse_tesseract_tsv(tsv: &str, query: &str, min_confidence: f32) -> Vec<ScreenMatch> {
+    let query_lower = query.to_lowercase();
+    let mut matches = Vec::new();
+    for line in tsv.lines().skip(1) {
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() < 12 {
+            continue;
+        }
+        let conf: f32 = match fields[10].trim().parse::<f32>() {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        // Negative confidence means non-word row (e.g., block/line level) — skip
+        if conf < 0.0 {
+            continue;
+        }
+        let text = fields[11].trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !text.to_lowercase().contains(&query_lower) {
+            continue;
+        }
+        let confidence = (conf / 100.0).clamp(0.0, 1.0);
+        if confidence < min_confidence {
+            continue;
+        }
+        let left: i32 = fields[6].trim().parse().unwrap_or(0);
+        let top: i32 = fields[7].trim().parse().unwrap_or(0);
+        let width: u32 = fields[8].trim().parse().unwrap_or(0);
+        let height: u32 = fields[9].trim().parse().unwrap_or(0);
+        matches.push(ScreenMatch {
+            text: Some(text.to_string()),
+            bounds: BoundingBox { x: left, y: top, width, height },
+            confidence,
+            source: "tesseract-ocr".to_string(),
+        });
+    }
+    matches
+}
+
 #[cfg(target_os = "windows")]
 fn get_screen_info_native() -> ScreenInfo {
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -1386,17 +1466,38 @@ fn get_screen_info_native() -> ScreenInfo {
 }
 
 #[cfg(target_os = "macos")]
+fn macos_screen_size() -> Option<(u32, u32)> {
+    let out = run_command("osascript", &[
+        "-e",
+        "tell application \"Finder\" to get bounds of window of desktop",
+    ]).ok()?;
+    let text = String::from_utf8_lossy(&out);
+    // Output: "0, 0, 2560, 1600"
+    let parts: Vec<u32> = text.trim()
+        .split(", ")
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+    (parts.len() == 4).then(|| (parts[2], parts[3]))
+}
+
+#[cfg(target_os = "macos")]
 fn get_screen_info_native() -> ScreenInfo {
+    let (width, height) = macos_screen_size().unwrap_or((0, 0));
+    let monitors = if width > 0 {
+        vec![MonitorInfo { id: "primary".to_string(), x: 0, y: 0, width, height, primary: true }]
+    } else {
+        vec![]
+    };
     ScreenInfo {
-        width: 0,
-        height: 0,
-        monitors: vec![],
+        width,
+        height,
+        monitors,
         display_server: None,
-        automation_available: false,
+        automation_available: true,
         warnings: vec![
-            "macOS screenshot requires Screen Recording permission.".to_string(),
-            "macOS keyboard/mouse automation requires Accessibility permission.".to_string(),
-            "Mouse control needs a Quartz/CoreGraphics implementation before it can be marked available.".to_string(),
+            "macOS automation uses cliclick — install with: brew install cliclick".to_string(),
+            "Accessibility permission required for mouse/keyboard control.".to_string(),
+            "Screen Recording permission required for screenshots.".to_string(),
         ],
     }
 }
@@ -1479,7 +1580,15 @@ fn get_mouse_position_native() -> Result<MousePosition, String> {
 
 #[cfg(target_os = "macos")]
 fn get_mouse_position_native() -> Result<MousePosition, String> {
-    Err("Mouse position requires a macOS Quartz/CoreGraphics implementation".to_string())
+    let out = run_command("cliclick", &["p"])
+        .map_err(|e| format!("Mouse position requires cliclick (brew install cliclick): {e}"))?;
+    let text = String::from_utf8_lossy(&out);
+    let text = text.trim();
+    let (xs, ys) = text.split_once(',')
+        .ok_or_else(|| format!("cliclick p returned unexpected output: {text}"))?;
+    let x = xs.trim().parse::<i32>().map_err(|_| format!("cliclick p bad x: {xs}"))?;
+    let y = ys.trim().parse::<i32>().map_err(|_| format!("cliclick p bad y: {ys}"))?;
+    Ok(MousePosition { x, y })
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -1533,7 +1642,9 @@ fn move_mouse_native(
 ) -> Result<(), String> {
     let _ = action_started_at;
     if is_wayland() {
-        return Err("Wayland does not permit xdotool mouse automation".to_string());
+        return run_command_no_output("ydotool", &[
+            "mousemove", "--absolute", "-x", &x.to_string(), "-y", &y.to_string(),
+        ]).map_err(|e| format!("Wayland mouse requires ydotool with ydotoold running: {e}"));
     }
     let x_s = x.to_string();
     let y_s = y.to_string();
@@ -1556,13 +1667,16 @@ fn move_mouse_native(
 
 #[cfg(target_os = "macos")]
 fn move_mouse_native(
-    _x: i32,
-    _y: i32,
+    x: i32,
+    y: i32,
     _duration_ms: u64,
-    _action_started_at: u128,
-    _runtime: &mut AutomationRuntimeState,
+    action_started_at: u128,
+    runtime: &mut AutomationRuntimeState,
 ) -> Result<(), String> {
-    Err("Mouse movement on macOS requires Accessibility permission and a Quartz/CoreGraphics implementation".to_string())
+    detect_native_physical_intervention(runtime, action_started_at)?;
+    run_command_no_output("cliclick", &[&format!("m:{},{}", x, y)])
+        .map_err(|e| format!("Mouse movement requires cliclick (brew install cliclick): {e}"))?;
+    detect_native_physical_intervention(runtime, action_started_at)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -1661,7 +1775,18 @@ fn click_native(
 ) -> Result<(), String> {
     detect_native_physical_intervention(runtime, action_started_at)?;
     if is_wayland() {
-        return Err("Wayland does not permit xdotool mouse automation".to_string());
+        let code = match button {
+            MouseButton::Left => "0xC0",
+            MouseButton::Right => "0xC1",
+            MouseButton::Middle => "0xC2",
+        };
+        run_command_no_output("ydotool", &["mousemove", "--absolute", "-x", &x.to_string(), "-y", &y.to_string()])
+            .map_err(|e| format!("Wayland mouse requires ydotool with ydotoold running: {e}"))?;
+        for _ in 0..clicks {
+            run_command_no_output("ydotool", &["click", code])
+                .map_err(|e| format!("Wayland click requires ydotool with ydotoold running: {e}"))?;
+        }
+        return detect_native_physical_intervention(runtime, action_started_at);
     }
     let x_s = x.to_string();
     let y_s = y.to_string();
@@ -1676,14 +1801,26 @@ fn click_native(
 
 #[cfg(target_os = "macos")]
 fn click_native(
-    _x: i32,
-    _y: i32,
-    _button: MouseButton,
-    _clicks: u8,
-    _action_started_at: u128,
-    _runtime: &mut AutomationRuntimeState,
+    x: i32,
+    y: i32,
+    button: MouseButton,
+    clicks: u8,
+    action_started_at: u128,
+    runtime: &mut AutomationRuntimeState,
 ) -> Result<(), String> {
-    Err("Mouse click on macOS requires Accessibility permission and a Quartz/CoreGraphics implementation".to_string())
+    detect_native_physical_intervention(runtime, action_started_at)?;
+    let action = match button {
+        MouseButton::Right => "rc",
+        _ => "c",
+    };
+    let coord_action = format!("{}:{},{}", action, x, y);
+    let args: Vec<String> = std::iter::repeat(coord_action)
+        .take(clicks.clamp(1, 3) as usize)
+        .collect();
+    let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_command_no_output("cliclick", &args_ref)
+        .map_err(|e| format!("Mouse click requires cliclick (brew install cliclick): {e}"))?;
+    detect_native_physical_intervention(runtime, action_started_at)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -1769,7 +1906,16 @@ fn drag_native(
 ) -> Result<(), String> {
     detect_native_physical_intervention(runtime, action_started_at)?;
     if is_wayland() {
-        return Err("Wayland does not permit xdotool mouse automation".to_string());
+        // move to start, press button, move to end, release
+        run_command_no_output("ydotool", &["mousemove", "--absolute", "-x", &from_x.to_string(), "-y", &from_y.to_string()])
+            .map_err(|e| format!("Wayland drag requires ydotool with ydotoold running: {e}"))?;
+        run_command_no_output("ydotool", &["click", "0x40"]) // left button down
+            .map_err(|e| format!("Wayland drag requires ydotool with ydotoold running: {e}"))?;
+        run_command_no_output("ydotool", &["mousemove", "--absolute", "-x", &to_x.to_string(), "-y", &to_y.to_string()])
+            .map_err(|e| format!("Wayland drag requires ydotool with ydotoold running: {e}"))?;
+        run_command_no_output("ydotool", &["click", "0x80"]) // left button up
+            .map_err(|e| format!("Wayland drag requires ydotool with ydotoold running: {e}"))?;
+        return detect_native_physical_intervention(runtime, action_started_at);
     }
     let button_s = button.xdotool_button().to_string();
     run_command_no_output(
@@ -1796,16 +1942,23 @@ fn drag_native(
 
 #[cfg(target_os = "macos")]
 fn drag_native(
-    _from_x: i32,
-    _from_y: i32,
-    _to_x: i32,
-    _to_y: i32,
+    from_x: i32,
+    from_y: i32,
+    to_x: i32,
+    to_y: i32,
     _duration_ms: u64,
     _button: MouseButton,
-    _action_started_at: u128,
-    _runtime: &mut AutomationRuntimeState,
+    action_started_at: u128,
+    runtime: &mut AutomationRuntimeState,
 ) -> Result<(), String> {
-    Err("Mouse drag on macOS requires Accessibility permission and a Quartz/CoreGraphics implementation".to_string())
+    detect_native_physical_intervention(runtime, action_started_at)?;
+    run_command_no_output("cliclick", &[
+        &format!("dd:{},{}", from_x, from_y),
+        &format!("m:{},{}", to_x, to_y),
+        &format!("du:{},{}", to_x, to_y),
+    ])
+    .map_err(|e| format!("Mouse drag requires cliclick (brew install cliclick): {e}"))?;
+    detect_native_physical_intervention(runtime, action_started_at)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -1889,7 +2042,15 @@ fn scroll_native(
 ) -> Result<(), String> {
     detect_native_physical_intervention(runtime, action_started_at)?;
     if is_wayland() {
-        return Err("Wayland does not permit xdotool scroll automation".to_string());
+        if delta_y != 0 {
+            run_command_no_output("ydotool", &["scroll", "0", &delta_y.to_string()])
+                .map_err(|e| format!("Wayland scroll requires ydotool with ydotoold running: {e}"))?;
+        }
+        if delta_x != 0 {
+            run_command_no_output("ydotool", &["scroll", &delta_x.to_string(), "0"])
+                .map_err(|e| format!("Wayland scroll requires ydotool with ydotoold running: {e}"))?;
+        }
+        return detect_native_physical_intervention(runtime, action_started_at);
     }
     let mut result = Ok(());
     let vertical_button = if delta_y < 0 { "5" } else { "4" };
@@ -1908,12 +2069,28 @@ fn scroll_native(
 
 #[cfg(target_os = "macos")]
 fn scroll_native(
-    _delta_x: i32,
-    _delta_y: i32,
-    _action_started_at: u128,
-    _runtime: &mut AutomationRuntimeState,
+    delta_x: i32,
+    delta_y: i32,
+    action_started_at: u128,
+    runtime: &mut AutomationRuntimeState,
 ) -> Result<(), String> {
-    Err("Mouse scroll on macOS requires Accessibility permission and a Quartz/CoreGraphics implementation".to_string())
+    detect_native_physical_intervention(runtime, action_started_at)?;
+    let mut args: Vec<String> = Vec::new();
+    if delta_y != 0 {
+        let n = delta_y.abs().min(50);
+        args.push(format!("{}:{}", if delta_y > 0 { "su" } else { "sd" }, n));
+    }
+    if delta_x != 0 {
+        let n = delta_x.abs().min(50);
+        args.push(format!("{}:{}", if delta_x > 0 { "sr" } else { "sl" }, n));
+    }
+    if args.is_empty() {
+        return Ok(());
+    }
+    let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_command_no_output("cliclick", &args_ref)
+        .map_err(|e| format!("Scroll requires cliclick v4+ (brew install cliclick): {e}"))?;
+    detect_native_physical_intervention(runtime, action_started_at)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -1953,7 +2130,8 @@ fn type_text_native(
 ) -> Result<(), String> {
     detect_native_physical_intervention(runtime, action_started_at)?;
     if is_wayland() {
-        return Err("Wayland does not permit xdotool keyboard automation".to_string());
+        return run_command_no_output("ydotool", &["type", text])
+            .map_err(|e| format!("Wayland typing requires ydotool with ydotoold running: {e}"));
     }
     run_command_no_output(
         "xdotool",
@@ -2082,7 +2260,9 @@ fn key_combo_native(
 ) -> Result<(), String> {
     detect_native_physical_intervention(runtime, action_started_at)?;
     if is_wayland() {
-        return Err("Wayland does not permit xdotool keyboard automation".to_string());
+        let combo = keys.join("+");
+        return run_command_no_output("ydotool", &["key", &combo])
+            .map_err(|e| format!("Wayland key combo requires ydotool with ydotoold running: {e}"));
     }
     let combo = keys
         .iter()
@@ -2273,7 +2453,7 @@ mod tests {
     }
 
     #[test]
-    fn locate_on_screen_contract_fails_clear_without_native_ocr() {
+    fn locate_on_screen_rejects_empty_query() {
         let mut service = DesktopAutomationService::new();
         service.set_permissions(PermissionPatch {
             automation_enabled: None,
@@ -2291,17 +2471,34 @@ mod tests {
             empty.error.as_deref(),
             Some("locate_on_screen requires a non-empty query")
         );
+    }
 
-        let result = service.locate_on_screen(LocateOnScreenArgs {
-            query: "AgentMax".to_string(),
-            min_confidence: Some(0.7),
-        });
-        assert!(!result.success);
-        assert!(result
-            .error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("OCR/accessibility bridge"));
+    #[test]
+    fn parse_tesseract_tsv_finds_matching_words() {
+        let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+                   5\t1\t1\t1\t1\t1\t10\t20\t80\t15\t95.5\tHello\n\
+                   5\t1\t1\t1\t1\t2\t100\t20\t90\t15\t87.3\tWorld\n\
+                   5\t1\t1\t1\t1\t3\t200\t20\t60\t15\t30.0\tFoo\n\
+                   2\t1\t1\t0\t0\t0\t0\t0\t800\t600\t-1\t\n";
+        let matches = parse_tesseract_tsv(tsv, "hello", 0.5);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].text.as_deref(), Some("Hello"));
+        assert_eq!(matches[0].bounds.x, 10);
+        assert_eq!(matches[0].bounds.y, 20);
+        assert!((matches[0].confidence - 0.955).abs() < 0.001);
+
+        // Case-insensitive match
+        let matches2 = parse_tesseract_tsv(tsv, "WORLD", 0.5);
+        assert_eq!(matches2.len(), 1);
+        assert_eq!(matches2[0].text.as_deref(), Some("World"));
+
+        // Low confidence filtered out
+        let matches3 = parse_tesseract_tsv(tsv, "Foo", 0.5);
+        assert_eq!(matches3.len(), 0);
+
+        // Negative conf row (block-level) is skipped
+        let matches4 = parse_tesseract_tsv(tsv, "", 0.0);
+        assert_eq!(matches4.len(), 0); // empty text also filtered
     }
 
     #[test]
