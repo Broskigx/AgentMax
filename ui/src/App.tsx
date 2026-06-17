@@ -7,6 +7,7 @@ import { AgentControlCursor } from './components/AgentControlCursor/AgentControl
 import { Overlay } from './components/Overlay/Overlay';
 import { HUDCanvas } from './components/HUD/HUDCanvas';
 import { ComputerMaxPrompt } from './components/ComputerMaxPrompt/ComputerMaxPrompt';
+import { GoalApprovalPrompt } from './components/GoalApprovalPrompt/GoalApprovalPrompt';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { Onboarding } from './components/Onboarding/Onboarding';
 import { applyVisualCompatibilityProfile } from './lib/visualCompatibility';
@@ -292,6 +293,7 @@ function AppContent() {
         <MainWindow />
         <AgentControlCursor />
         <ComputerMaxPrompt />
+        <GoalApprovalPrompt />
         <CommandPalette />
       </div>
     </div>
