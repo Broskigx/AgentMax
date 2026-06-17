@@ -52,7 +52,9 @@ def main() -> int:
         suffix = path.suffix.lower()
         if suffix in MODEL_EXTENSIONS:
             errors.append(f"tracked model/weight: {relative}")
-        if lowered == ".env" or lowered.startswith(".env."):
+        if lowered != ".env.example" and (
+            lowered == ".env" or lowered.startswith(".env.")
+        ):
             errors.append(f"tracked environment file: {relative}")
         if path.exists() and path.stat().st_size > MAX_BYTES:
             errors.append(
