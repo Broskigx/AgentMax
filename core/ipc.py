@@ -783,6 +783,8 @@ class IPCServer:
         # /goal stop <id> — cancel a running goal
         if message.startswith("/goal stop "):
             goal_id_prefix = message[11:].strip()
+            if not goal_id_prefix:
+                return {"reply": "Uso: /goal stop <id>", "task_id": None}
             engine = self._goal_engine
             if engine is None:
                 return {"reply": "No hay ningún goal activo.", "task_id": None}

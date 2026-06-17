@@ -14,7 +14,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 function formatParams(actionType: string, params: Record<string, unknown>): string {
   if (actionType === 'run_shell') return String(params.command ?? '');
-  if (actionType === 'install_package') return String(params.spec ?? '');
+  if (actionType === 'install_package') return String(params.pkg ?? '');
   if (actionType === 'create_venv') return String(params.path ?? '');
   if (actionType === 'write_skill') return String(params.name ?? '');
   if (actionType === 'task') return String(params.description ?? params.prompt ?? '');

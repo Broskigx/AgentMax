@@ -310,8 +310,7 @@ class GoalEngine:
         self, goal_id: str, action_type: str, params: dict[str, Any]
     ) -> bool:
         """Emit approval request and wait for user response (or timeout)."""
-        import uuid as _uuid
-        action_id = str(_uuid.uuid4())[:8]
+        action_id = str(uuid4())[:8]
         key = f"{goal_id}:{action_id}"
         ev = asyncio.Event()
         self._pending_approvals[key] = ev
@@ -341,9 +340,11 @@ class GoalEngine:
         try:
             await asyncio.wait_for(asyncio.shield(ev.wait()), timeout=_APPROVAL_TIMEOUT_S)
             approved = self._approval_results.get(key, False)
-        except (TimeoutError, asyncio.CancelledError):
+        except TimeoutError:
             approved = False
             log.warning("goal.approval_timeout", goal_id=goal_id[:8], action_type=action_type)
+        except asyncio.CancelledError:
+            raise  # finally cleans up; loop task terminates cleanly
         finally:
             self._pending_approvals.pop(key, None)
             self._approval_results.pop(key, None)
@@ -437,7 +438,7 @@ class GoalEngine:
             state.status = GoalStatus.FAILED
             state.error = f"Max iterations ({state.max_iterations}) reached without completing goal."
             state.completed_at = time.time()
-            self._save_state(state)
+            await asyncio.to_thread(self._save_state, state)
             await self._emit(
                 "goal.failed",
                 {"goal_id": goal_id, "error": state.error},
@@ -448,14 +449,14 @@ class GoalEngine:
             if state.status == GoalStatus.RUNNING:
                 state.status = GoalStatus.CANCELLED
                 state.completed_at = time.time()
-                self._save_state(state)
+                await asyncio.to_thread(self._save_state, state)
             raise
         except Exception as exc:
             log.error("goal.loop_error", goal_id=goal_id[:8], error=str(exc))
             state.status = GoalStatus.FAILED
             state.error = str(exc)
             state.completed_at = time.time()
-            self._save_state(state)
+            await asyncio.to_thread(self._save_state, state)
             await self._emit("goal.failed", {"goal_id": goal_id, "error": str(exc)})
 
     # ------------------------------------------------------------------ #

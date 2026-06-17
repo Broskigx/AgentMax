@@ -1097,14 +1097,17 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   approveGoalAction: async () => {
     const req = get().goalApprovalRequest;
     if (!req) return;
-    set({ goalApprovalRequest: null });
     try {
-      await apiFetch(`/api/goal/${encodeURIComponent(req.goalId)}/approve`, {
+      const res = await apiFetch(`/api/goal/${encodeURIComponent(req.goalId)}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action_id: req.actionId }),
       });
-    } catch {}
+      if (res.ok) set({ goalApprovalRequest: null });
+      // on failure: keep dialog open so user can retry before the 120s timeout
+    } catch {
+      // keep dialog open on network error
+    }
   },
   denyGoalAction: () => {
     const req = get().goalApprovalRequest;
