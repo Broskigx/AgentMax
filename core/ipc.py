@@ -776,6 +776,37 @@ class IPCServer:
         if not message:
             return {"error": "empty_message"}
 
+        # NOTE: order matters — "/goal stop ..." and bare "/goal" must be
+        # checked before the generic "/goal <objective>" prefix, otherwise
+        # "stop ..." would be parsed as an objective.
+
+        # /goal stop <id> — cancel a running goal
+        if message.startswith("/goal stop "):
+            goal_id_prefix = message[11:].strip()
+            engine = self._goal_engine
+            if engine is None:
+                return {"reply": "No hay ningún goal activo.", "task_id": None}
+            active = engine.list_active()
+            matched = [gid for gid in active if gid.startswith(goal_id_prefix)]
+            if not matched:
+                return {"reply": f"No se encontró goal con ID '{goal_id_prefix}'.", "task_id": None}
+            for gid in matched:
+                await engine.stop_goal(gid)
+            return {"reply": f"Goal(s) cancelado(s): {', '.join(gid[:8] for gid in matched)}", "task_id": None}
+
+        # /goal (no args) — list active goals
+        if message.strip() == "/goal":
+            engine = self._goal_engine
+            active = engine.list_active() if engine else []
+            if not active:
+                return {"reply": "No hay goals activos. Usa: /goal <objetivo>", "task_id": None}
+            lines = ["Goals activos:"]
+            for gid in active:
+                state = engine.get_state(gid)
+                if state:
+                    lines.append(f"  • {gid[:8]}… — iter {state.iterations}/{state.max_iterations} — {state.objective[:60]}")
+            return {"reply": "\n".join(lines), "task_id": None}
+
         # /goal <objective> — activate autonomous autoloop
         if message.startswith("/goal "):
             if not self._is_goal_enabled():
@@ -796,7 +827,10 @@ class IPCServer:
 
                 ai_client = AIRouter(self._config)
             engine = self._get_goal_engine(ai_client)
-            goal_id = await engine.start_goal(objective)
+            try:
+                goal_id = await engine.start_goal(objective)
+            except RuntimeError as exc:
+                return {"reply": f"No se pudo iniciar el goal: {exc}", "task_id": None}
             approval_note = (
                 "\n⚠️ Cada acción que modifique el sistema pedirá confirmación explícita."
                 if self._goal_require_approval()
@@ -809,31 +843,6 @@ class IPCServer:
                 f"Puedes cancelarlo con /goal stop {goal_id[:8]}.{approval_note}"
             )
             return {"reply": reply, "goal_id": goal_id, "task_id": None}
-
-        if message.startswith("/goal stop "):
-            goal_id_prefix = message[11:].strip()
-            engine = self._goal_engine
-            if engine is None:
-                return {"reply": "No hay ningún goal activo.", "task_id": None}
-            active = engine.list_active()
-            matched = [gid for gid in active if gid.startswith(goal_id_prefix)]
-            if not matched:
-                return {"reply": f"No se encontró goal con ID '{goal_id_prefix}'.", "task_id": None}
-            for gid in matched:
-                await engine.stop_goal(gid)
-            return {"reply": f"Goal(s) cancelado(s): {', '.join(gid[:8] for gid in matched)}", "task_id": None}
-
-        if message.strip() == "/goal":
-            engine = self._goal_engine
-            active = engine.list_active() if engine else []
-            if not active:
-                return {"reply": "No hay goals activos. Usa: /goal <objetivo>", "task_id": None}
-            lines = ["Goals activos:"]
-            for gid in active:
-                state = engine.get_state(gid)
-                if state:
-                    lines.append(f"  • {gid[:8]}… — iter {state.iterations}/{state.max_iterations} — {state.objective[:60]}")
-            return {"reply": "\n".join(lines), "task_id": None}
 
         # Log incoming message to session logger (local, redacted).
         # NOTE: self._config.ai is an AIConfig pydantic model, NOT a dict —
@@ -1002,6 +1011,15 @@ class IPCServer:
             method = request.method
             full_path = f"/{path}"
 
+            # Anti DNS-rebinding: reject any non-loopback Host header. Browser
+            # rebinding pages send the attacker hostname; loopback callers do not.
+            if not _ipc_auth.is_allowed_host(request.headers.get("host")):
+                self._metrics["auth_rejected"] += 1
+                log.warning("ipc.host_rejected", host=request.headers.get("host"))
+                return JSONResponse(
+                    status_code=403, content={"error": "forbidden", "reason": "bad_host"}
+                )
+
             # Phase 2: IPC auth gate (feature-flagged).
             try:
                 _ipc_auth.check_rest_request(
@@ -1094,6 +1112,7 @@ class IPCServer:
             self._ws_handler,
             getattr(self._config, "host", "127.0.0.1"),
             ws_port,
+            origins=list(_ipc_auth.ALLOWED_WS_ORIGINS),
         ):
             await asyncio.Future()
 
