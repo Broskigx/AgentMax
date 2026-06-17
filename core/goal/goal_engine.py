@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 import sys
 import time
@@ -29,6 +28,8 @@ from uuid import uuid4
 
 import structlog
 
+from core.data_collection.redactor import redact_text
+from core.security.policy import SecurityPolicy, is_inside_allowed, is_sensitive_path
 from core.tools.safety_supervisor import AgentToolSupervisor
 
 log = structlog.get_logger(__name__)
@@ -41,6 +42,19 @@ _REDIS_TTL = 86_400  # 24 h — renewed every iteration
 _DEFAULT_MAX_ITER = 200
 _ITER_DELAY_S = 1.0  # minimum pause between iterations
 _SKILL_DIR = Path(__file__).parent.parent.parent / "sdk" / "skills"
+
+# Resource / runaway guards.
+_MAX_CONCURRENT_GOALS = 3
+_MAX_CONSECUTIVE_FAILURES = 5  # abort the loop after N undecidable/erroring iterations
+_SUBPROCESS_KILL_GRACE_S = 5.0
+
+# PEP 508-style package spec: name[extras] with an optional single version pin.
+# Rejects leading dashes (pip option injection), paths, URLs, and VCS specs.
+_PKG_SPEC_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._-]*"
+    r"(\[[A-Za-z0-9,._-]+\])?"
+    r"([<>=!~]=?[A-Za-z0-9._*+!-]+)?$"
+)
 
 
 class GoalStatus(str, Enum):
@@ -206,6 +220,11 @@ class GoalEngine:
         self._max_iterations = max_iterations
         self._require_approval = require_approval
         self._supervisor = AgentToolSupervisor()
+        # Defense-in-depth: reuse the executor's shell/path policy. The whole
+        # home dir is the work allowlist, which blocks system locations
+        # (/etc, /usr, /root/.ssh, …) and secret/credential paths.
+        self._policy = SecurityPolicy(allowed_dirs=[str(Path.home())])
+        self._workspace = Path.home() / ".agentmax" / "goal_workspace"
         self._tasks: dict[str, asyncio.Task] = {}  # goal_id → background Task
         # Pending approvals: key = "{goal_id}:{action_id}"
         self._pending_approvals: dict[str, asyncio.Event] = {}
@@ -216,7 +235,13 @@ class GoalEngine:
     # ------------------------------------------------------------------ #
 
     async def start_goal(self, objective: str) -> str:
-        """Create a new goal, persist initial state to Redis, start autoloop."""
+        """Create a new goal, persist initial state, start autoloop."""
+        active = sum(1 for t in self._tasks.values() if not t.done())
+        if active >= _MAX_CONCURRENT_GOALS:
+            raise RuntimeError(
+                f"Too many active goals ({active}/{_MAX_CONCURRENT_GOALS}); "
+                "stop one before starting another."
+            )
         goal_id = str(uuid4())
         state = GoalState(
             goal_id=goal_id,
@@ -337,25 +362,37 @@ class GoalEngine:
         state = self._load_state(goal_id)
         if not state:
             return
+        consecutive_failures = 0
         try:
             while state.iterations < state.max_iterations:
-                if asyncio.current_task().cancelled():
-                    raise asyncio.CancelledError
-
                 state.iterations += 1
-                self._save_state(state)  # renew TTL every iteration
+                await asyncio.to_thread(self._save_state, state)  # renew TTL
 
                 decision = await self._get_ai_decision(state)
                 if decision is None:
-                    # AI returned unparseable response — try again next iteration
-                    await asyncio.sleep(_ITER_DELAY_S)
+                    consecutive_failures += 1
+                    if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                        state.status = GoalStatus.FAILED
+                        state.error = (
+                            f"Aborted after {consecutive_failures} consecutive "
+                            "undecidable AI responses."
+                        )
+                        state.completed_at = time.time()
+                        await asyncio.to_thread(self._save_state, state)
+                        await self._emit(
+                            "goal.failed", {"goal_id": goal_id, "error": state.error}
+                        )
+                        return
+                    # Back off proportionally so a bad backend cannot busy-spin.
+                    await asyncio.sleep(_ITER_DELAY_S * consecutive_failures)
                     continue
+                consecutive_failures = 0
 
                 if decision.get("done"):
                     state.status = GoalStatus.COMPLETED
                     state.completed_at = time.time()
                     state.completion_summary = str(decision.get("summary", ""))[:1000]
-                    self._save_state(state)
+                    await asyncio.to_thread(self._save_state, state)
                     await self._emit(
                         "goal.completed",
                         {
@@ -382,7 +419,7 @@ class GoalEngine:
                 if len(state.history) > 100:
                     state.history = state.history[-100:]
 
-                self._save_state(state)
+                await asyncio.to_thread(self._save_state, state)
                 await self._emit(
                     "goal.iteration",
                     {
@@ -492,13 +529,41 @@ class GoalEngine:
         except Exception as exc:
             success, result = False, f"Action raised exception: {exc}"
 
+        # Redact secrets/tokens from output before it is persisted (24h TTL in
+        # Redis/SQLite) or emitted to the UI over the event bus.
         return GoalIteration(
             iteration=state.iterations,
             action_type=action_type,
             action_params=params,
-            result=result,
+            result=redact_text(result)[:2000],
             success=success,
         )
+
+    @staticmethod
+    async def _communicate(
+        proc: asyncio.subprocess.Process, timeout: float
+    ) -> tuple[bool, str]:
+        """Await a subprocess with a hard timeout, killing + reaping on expiry.
+
+        Returns (success, output). Prevents orphaned pip/venv/shell processes
+        when a command hangs.
+        """
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except TimeoutError:
+            proc.kill()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=_SUBPROCESS_KILL_GRACE_S)
+            except (TimeoutError, ProcessLookupError):
+                pass
+            return False, f"timed out after {timeout:.0f}s (process killed)"
+        except Exception as exc:
+            return False, str(exc)
+        out = (stdout or b"").decode(errors="replace").strip()
+        err = (stderr or b"").decode(errors="replace").strip()
+        if proc.returncode == 0:
+            return True, out or "(no output)"
+        return False, f"exit={proc.returncode} {err or out}"
 
     async def _action_task(
         self, params: dict[str, Any], state: GoalState
@@ -535,32 +600,39 @@ class GoalEngine:
             return False, str(exc)
 
     async def _action_install_package(
-        self, params: dict[str, Any], _state: GoalState
+        self, params: dict[str, Any], state: GoalState
     ) -> tuple[bool, str]:
         pkg = str(params.get("pkg", "")).strip()
-        if not pkg or any(c in pkg for c in (";", "&", "|", "$", "`", "\n")):
+        # Strict PEP 508 spec only — rejects leading-dash pip options
+        # (e.g. --index-url, -r file), local paths, URLs and VCS specs that
+        # would let pip run arbitrary code at install time.
+        if not pkg or not _PKG_SPEC_RE.match(pkg):
             return False, "invalid package name"
         venv = str(params.get("venv", "")).strip()
         if venv:
-            pip = str(Path(venv) / ("Scripts" if sys.platform == "win32" else "bin") / "pip")
+            vpath = Path(venv).expanduser().resolve()
+            if not is_inside_allowed(vpath, self._policy.allowed_dirs):
+                return False, f"venv outside allowed directories: {venv}"
+            bindir = "Scripts" if sys.platform == "win32" else "bin"
+            pyname = "python.exe" if sys.platform == "win32" else "python"
+            python = str(vpath / bindir / pyname)
         else:
-            pip = sys.executable.replace("python", "pip") if "python" in sys.executable else "pip"
+            python = sys.executable
 
-        cmd = [pip, "install", "--quiet", pkg]
+        cmd = [python, "-m", "pip", "install", "--no-input", "--isolated", "--quiet", pkg]
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-            if proc.returncode == 0:
-                return True, f"Installed {pkg}"
-            return False, (stderr or stdout).decode(errors="replace")[:400]
-        except TimeoutError:
-            return False, "pip install timed out after 120s"
         except Exception as exc:
             return False, str(exc)
+        ok, out = await self._communicate(proc, timeout=120)
+        if ok:
+            state.packages_installed.append(pkg)
+            return True, f"Installed {pkg}"
+        return False, out[:400]
 
     async def _action_create_venv(
         self, params: dict[str, Any], state: GoalState
@@ -568,11 +640,11 @@ class GoalEngine:
         path = str(params.get("path", "")).strip()
         if not path:
             return False, "no path specified for venv"
-        # Safety: must be an absolute path and not a system directory
+        # Allowlist: must resolve to a path inside the user's home and must not
+        # be a sensitive/credential location. Blocks /etc, /usr, /root/.ssh, etc.
         p = Path(path).expanduser().resolve()
-        forbidden = {Path("/"), Path("/usr"), Path("/etc"), Path("/bin"), Path("/sbin")}
-        if p in forbidden or any(str(p).startswith("/proc") for _ in [None]):
-            return False, f"forbidden venv path: {path}"
+        if is_sensitive_path(p) or not is_inside_allowed(p, self._policy.allowed_dirs):
+            return False, f"forbidden venv path (outside home or sensitive): {path}"
         cmd = [sys.executable, "-m", "venv", str(p)]
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -580,15 +652,13 @@ class GoalEngine:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-            if proc.returncode == 0:
-                state.venvs_created.append(str(p))
-                return True, f"Created venv at {p}"
-            return False, (stderr or stdout).decode(errors="replace")[:400]
-        except TimeoutError:
-            return False, "venv creation timed out"
         except Exception as exc:
             return False, str(exc)
+        ok, out = await self._communicate(proc, timeout=60)
+        if ok:
+            state.venvs_created.append(str(p))
+            return True, f"Created venv at {p}"
+        return False, out[:400]
 
     async def _action_write_skill(
         self, params: dict[str, Any], state: GoalState
@@ -598,9 +668,13 @@ class GoalEngine:
         description = str(params.get("description", "Skill generated by GoalEngine")).strip()
         if not name or not code:
             return False, "name and code are required for write_skill"
-        name = re.sub(r"[^\w]", "_", name).lower()[:64]
+        name = re.sub(r"[^\w]", "_", name, flags=re.ASCII).lower()[:64]
+        if not name:
+            return False, "skill name reduced to empty after sanitization"
         _SKILL_DIR.mkdir(parents=True, exist_ok=True)
         skill_path = _SKILL_DIR / f"{name}.py"
+        if skill_path.exists():
+            return False, f"skill '{name}' already exists; choose a different name"
         header = (
             f'"""{description}\n\nGenerated by AgentMax GoalEngine for goal: {state.goal_id[:8]}"""\n\n'
         )
@@ -615,30 +689,36 @@ class GoalEngine:
         command = str(params.get("command", "")).strip()
         if not command:
             return False, "no command provided"
-        # Safety gate
+        # Gate 1: heuristic dangerous-pattern supervisor (rm -rf, shutdown, …).
         decision = self._supervisor.inspect_command(command, approved=False)
         if decision.blocked:
             return False, f"Command blocked by safety supervisor: {decision.reason}"
         if not decision.allowed:
-            # High-risk but not blocked: try with approval flag set to False, reject
             return False, f"Command requires explicit approval before execution: {decision.reason}"
+        # Gate 2: reuse the executor's shell policy — blocks compound commands,
+        # pipelines, exfiltration and secret-path access, and pins execution to
+        # an allowlisted working directory inside the user's home.
+        cwd = str(params.get("cwd", "")).strip()
+        if cwd:
+            cwd_path = Path(cwd).expanduser().resolve()
+        else:
+            self._workspace.mkdir(parents=True, exist_ok=True)
+            cwd_path = self._workspace
+        policy = self._policy.validate_shell(command, cwd_path)
+        if not policy.allowed:
+            return False, f"Command blocked by policy: {policy.reason}"
         try:
             proc = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**os.environ},
+                cwd=str(cwd_path),
+                env=self._policy.scrub_environment(),
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-            out = (stdout or b"").decode(errors="replace")[:400]
-            err = (stderr or b"").decode(errors="replace")[:200]
-            if proc.returncode == 0:
-                return True, out or "Command completed with no output."
-            return False, f"exit={proc.returncode} stderr={err}"
-        except TimeoutError:
-            return False, "Shell command timed out after 60s"
         except Exception as exc:
             return False, str(exc)
+        ok, out = await self._communicate(proc, timeout=60)
+        return ok, out[:600]
 
     async def _action_message(
         self, params: dict[str, Any], state: GoalState
@@ -687,7 +767,7 @@ class GoalEngine:
 
             await self._bus.publish(Event(topic, payload))
         except Exception as exc:
-            log.debug("goal.emit_failed", topic=topic, error=str(exc))
+            log.warning("goal.emit_failed", topic=topic, error=str(exc))
 
 
 __all__ = ["GoalEngine", "GoalIteration", "GoalState", "GoalStatus"]
