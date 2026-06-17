@@ -65,8 +65,27 @@ function TaskTimeline({ steps, status }: { steps: StepLog[]; status?: ChatMessag
   );
 }
 
+/** Split text on /command tokens and wrap them in a styled span. */
+function renderWithSlashTokens(text: string) {
+  // Match /word — only at word boundary so URLs like https://... are not touched
+  const parts = text.split(/((?:^|\s)(\/[a-z]\w*))/gi);
+  return parts.map((part, i) => {
+    const trimmed = part.trimStart();
+    if (/^\/[a-z]\w*/i.test(trimmed)) {
+      const isGoal = /^\/goal\b/i.test(trimmed);
+      return (
+        <span key={i} className={`ct-slash-cmd${isGoal ? ' ct-slash-cmd--goal' : ''}`}>
+          {trimmed}
+        </span>
+      );
+    }
+    return part;
+  });
+}
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user';
+  const isGoalCmd = isUser && /^\s*\/goal\b/i.test(message.content ?? '');
 
   return (
     <motion.div
@@ -78,10 +97,11 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       {!isUser ? <div className="ct-avatar" /> : null}
 
       <div className={`ct-bubble ${isUser ? 'ct-bubble--user' : 'ct-bubble--agent'}`}>
+        {isGoalCmd ? <span className="ct-goal-badge">Goal Mode</span> : null}
         {!isUser && !message.content && (message.status === 'sending' || message.status === 'streaming') ? (
           <TypingDots />
         ) : (
-          <p className="ct-bubble-text">{message.content}</p>
+          <p className="ct-bubble-text">{renderWithSlashTokens(message.content ?? '')}</p>
         )}
 
         {message.attachments?.length ? (

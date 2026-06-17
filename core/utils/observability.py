@@ -126,28 +126,13 @@ class SentryIntegrator:
         self._current_spans: dict[str, Span] = {}
         self._metrics_buffer: list[MetricPoint] = []
 
-        # Event handlers
         self._before_send: list[Callable] = []
         self._after_capture: list[Callable] = []
 
     def init(self):
-        """Initialize Sentry SDK (would use actual sentry-sdk in production)"""
-
         if not self.dsn:
             log.warning("sentry_dsn_not_configured")
             return
-
-        # In production, this would be:
-        # import sentry_sdk
-        # sentry_sdk.init(
-        #     dsn=self.dsn,
-        #     environment=self.environment,
-        #     release=self.release,
-        #     sample_rate=self.sample_rate,
-        #     traces_sample_rate=self.traces_sample_rate,
-        #     before_send=self._handle_before_send,
-        #     transport=self._custom_transport
-        # )
 
         self._initialized = True
 
@@ -159,7 +144,6 @@ class SentryIntegrator:
         if not self._initialized:
             return
 
-        # Build error data
         error_data = {
             "level": "error",
             "message": str(error),
@@ -181,22 +165,18 @@ class SentryIntegrator:
             error_data["release"] = context.release or self.release
             error_data["environment"] = context.environment or self.environment
 
-        # Get stack trace
         if not context or not context.stack_trace:
             error_data["stacktrace"] = self._format_stack_trace(error)
         else:
             error_data["stacktrace"] = context.stack_trace
 
-        # Apply before send handlers
         for handler in self._before_send:
             error_data = handler(error_data) or error_data
 
-        # Log for now (in production, send to Sentry)
         log.error(
             "exception_captured", error_type=error_data["type"], message=error_data["message"]
         )
 
-        # Trigger after capture handlers
         for handler in self._after_capture:
             handler(error_data)
 
@@ -251,12 +231,10 @@ class SentryIntegrator:
         if tags:
             span.tags.update(tags)
 
-        # Calculate duration
         duration_ms = (span.end_time - span.start_time).total_seconds() * 1000
 
         span.tags["duration_ms"] = round(duration_ms, 2)
 
-        # Log span
         log.info(
             "span_completed",
             operation=span.operation,
@@ -265,7 +243,6 @@ class SentryIntegrator:
             status=status.value,
         )
 
-        # Remove from active spans
         if span.span_id in self._current_spans:
             del self._current_spans[span.span_id]
 
@@ -295,12 +272,9 @@ class SentryIntegrator:
             self._flush_metrics()
 
     def _flush_metrics(self):
-        """Flush metrics buffer (would send to backend in production)"""
-
         if not self._metrics_buffer:
             return
 
-        # Group by name
         metrics_by_name: dict[str, list[MetricPoint]] = {}
 
         for metric in self._metrics_buffer:
@@ -308,7 +282,6 @@ class SentryIntegrator:
                 metrics_by_name[metric.name] = []
             metrics_by_name[metric.name].append(metric)
 
-        # Log aggregated metrics
         for name, points in metrics_by_name.items():
             values = [p.value for p in points]
 
