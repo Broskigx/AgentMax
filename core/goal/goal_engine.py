@@ -29,6 +29,7 @@ from uuid import uuid4
 import structlog
 
 from core.data_collection.redactor import redact_text
+from core.learning.auto_learn import AutoLearnEngine
 from core.security.policy import SecurityPolicy, is_inside_allowed, is_sensitive_path
 from core.tools.safety_supervisor import AgentToolSupervisor
 
@@ -155,7 +156,7 @@ Rules:
 """
 
 
-def _build_decision_prompt(state: GoalState) -> str:
+def _build_decision_prompt(state: GoalState, lesson_context: str = "") -> str:
     recent = state.history[-10:]
     history_text = "\n".join(
         f"  [{it.iteration}] {it.action_type}: {json.dumps(it.action_params)[:120]}"
@@ -165,7 +166,8 @@ def _build_decision_prompt(state: GoalState) -> str:
     return (
         f"OBJECTIVE: {state.objective}\n"
         f"ITERATION: {state.iterations + 1}/{state.max_iterations}\n"
-        f"HISTORY:\n{history_text or '  (none yet)'}\n\n"
+        f"HISTORY:\n{history_text or '  (none yet)'}"
+        f"{lesson_context}\n\n"
         "What is the next action?"
     )
 
@@ -229,6 +231,7 @@ class GoalEngine:
         # Pending approvals: key = "{goal_id}:{action_id}"
         self._pending_approvals: dict[str, asyncio.Event] = {}
         self._approval_results: dict[str, bool] = {}
+        self._learn = AutoLearnEngine()
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -464,7 +467,8 @@ class GoalEngine:
     # ------------------------------------------------------------------ #
 
     async def _get_ai_decision(self, state: GoalState) -> dict[str, Any] | None:
-        prompt = _build_decision_prompt(state)
+        lesson_context = await self._learn.recent_prompt_context()
+        prompt = _build_decision_prompt(state, lesson_context)
         try:
             raw = await self._ai.chat_query(
                 system=_GOAL_SYSTEM_PROMPT,
@@ -529,6 +533,31 @@ class GoalEngine:
             success, result = await handler(params, state)
         except Exception as exc:
             success, result = False, f"Action raised exception: {exc}"
+
+        # AutoLearn: record failures so future iterations (and future models) can
+        # learn from them. Fire-and-forget — never let a store error block execution.
+        if not success:
+            try:
+                input_summary = json.dumps(params)[:300]
+                await self._learn.record_goal_iteration(
+                    goal_id=state.goal_id,
+                    action_type=action_type,
+                    success=False,
+                    input_text=input_summary,
+                    error=result[:500],
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                await self._learn.record_goal_iteration(
+                    goal_id=state.goal_id,
+                    action_type=action_type,
+                    success=True,
+                    resolution="Action completed successfully.",
+                )
+            except Exception:
+                pass
 
         # Redact secrets/tokens from output before it is persisted (24h TTL in
         # Redis/SQLite) or emitted to the UI over the event bus.

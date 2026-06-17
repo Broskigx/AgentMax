@@ -609,6 +609,9 @@ class IPCServer:
             elif path.startswith("/api/goal"):
                 return await self._handle_goal(method, path, data or {})
 
+            elif path.startswith("/api/learn"):
+                return await self._handle_learn(method, path, data or {})
+
             elif path == "/api/chat/stop":
                 if hasattr(self, "_current_chat_task") and self._current_chat_task:
                     self._current_chat_task.cancel()
@@ -767,6 +770,41 @@ class IPCServer:
             return {"active": engine.list_active()}
 
         return {"error": "unknown goal endpoint"}
+
+    async def _handle_learn(self, method: str, path: str, data: dict) -> dict:
+        """REST handler for /api/learn endpoints."""
+        from core.learning.auto_learn import AutoLearnEngine
+        from core.learning.training_exporter import export_jsonl
+
+        # Reuse the GoalEngine's AutoLearnEngine if available, else create one.
+        engine = self._goal_engine
+        learn: AutoLearnEngine = (
+            engine._learn if engine is not None else AutoLearnEngine()
+        )
+
+        if path == "/api/learn/stats":
+            return await learn.stats()
+
+        if path == "/api/learn/lessons":
+            unresolved_only = bool(data.get("unresolved_only"))
+            context = str(data.get("context") or "")
+            limit = min(int(data.get("limit") or 100), 500)
+            rows = await learn.get_lessons(limit=limit, unresolved_only=unresolved_only, context=context)
+            return {"lessons": rows, "count": len(rows)}
+
+        if path == "/api/learn/export" and method == "POST":
+            out_path, count = await export_jsonl(learn.store)
+            return {"exported": count, "path": str(out_path)}
+
+        if path == "/api/learn/resolve" and method == "POST":
+            lesson_id = str(data.get("lesson_id") or "").strip()
+            resolution = str(data.get("resolution") or "").strip()
+            if not lesson_id:
+                return {"error": "lesson_id required"}
+            ok = await learn.record_success(lesson_id=lesson_id, resolution=resolution)
+            return {"ok": ok, "lesson_id": lesson_id}
+
+        return {"error": "unknown learn endpoint"}
 
     async def _handle_chat(self, data: dict) -> dict:
         """Process a conversational message and optionally dispatch a task."""
