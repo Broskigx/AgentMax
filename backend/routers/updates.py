@@ -23,10 +23,13 @@ router = APIRouter(prefix="/v1/updates", tags=["updates"])
 #     import base64; print(base64.urlsafe_b64encode(key.sign(sys.stdin.buffer.read())).decode())
 #   "
 _MANIFEST: dict = {
-    "channel": "stable",
-    "version": "1.0.0",
-    "min_version": "1.0.0",
-    "release_notes": "Initial release.",
+    "channel": "beta",
+    # Must match the shipped app version (ui/src-tauri/tauri.conf.json). Keeping
+    # these aligned prevents the (currently unwired) updater from ever telling a
+    # beta client it is below min_version and forcing an update.
+    "version": "0.1.1",
+    "min_version": "0.1.1",
+    "release_notes": "Closed beta build.",
     # Legacy single-URL field kept for old clients.
     # New clients use download_urls keyed by sys.platform value.
     "download_url": "",
