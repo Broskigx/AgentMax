@@ -138,7 +138,7 @@ class ValidationAgent(BaseAgent):
         if error_dialogs:
             ui_agent = self.ctx.runtime._agent_pool.get("ui_automation")
             if ui_agent:
-                for dialog in error_dialogs:
+                for _dialog in error_dialogs:
                     await ui_agent.press_key({"keys": "escape"})
                     await asyncio.sleep(0.2)
                     await ui_agent.press_key({"keys": "enter"})

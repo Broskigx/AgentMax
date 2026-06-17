@@ -5,9 +5,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 
 ORM_MODEL_CONFIG = ConfigDict(from_attributes=True)
+# Allow validating ORM objects whose JSON column is mapped to the `metadata_`
+# attribute (SQLAlchemy reserves the plain `metadata` name for the registry)
+# while still accepting/serializing the field as `metadata`.
+ORM_MODEL_CONFIG_META = ConfigDict(from_attributes=True, populate_by_name=True)
+_METADATA_ALIAS = AliasChoices("metadata_", "metadata")
 
 
 # ── Plan schemas ──────────────────────────────────────────────────────────────
@@ -23,8 +28,9 @@ class PlanCreate(BaseModel):
 
 
 class PlanOut(PlanCreate):
-    model_config = ORM_MODEL_CONFIG
+    model_config = ORM_MODEL_CONFIG_META
 
+    metadata: dict = Field(default_factory=dict, validation_alias=_METADATA_ALIAS)
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime

@@ -1066,4 +1066,25 @@ class SupervisorAgent(BaseAgent):
             self._active[task_id].status = TaskStatus.CANCELLED
 
     async def _on_step_complete(self, event: Event) -> None:
-        pass
+        """Record progress when a sub-agent reports a completed step.
+
+        Subscribes to ``agent.step_complete``; the payload carries the
+        originating ``task_id`` plus a step identifier and status. Updates the
+        live task's reasoning trace so progress is observable while the task is
+        still running.
+        """
+        payload = event.payload or {}
+        task_id = payload.get("task_id")
+        if not task_id or task_id not in self._active:
+            return
+
+        record = self._active[task_id]
+        step = (
+            payload.get("step")
+            or payload.get("step_id")
+            or payload.get("description")
+            or "step"
+        )
+        status = payload.get("status", "completed")
+        record.reasoning_trace.append(f"step_complete: {step} -> {status}")
+        log.debug("supervisor.step_complete", task_id=task_id, step=str(step), status=status)

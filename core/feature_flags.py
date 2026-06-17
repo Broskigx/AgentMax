@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -56,6 +57,11 @@ class FeatureFlags:
     crash_reports: bool = False
     redis_queue: bool = False
     sqlite_storage: bool = True
+    # /goal autonomous autoloop — OFF by default in closed beta.
+    # Actions that modify system state (install_package, write_skill, create_venv, task)
+    # always require explicit human approval regardless of this flag.
+    goal_engine: bool = False
+    goal_engine_require_approval: bool = True
 
     @classmethod
     def from_mapping(
@@ -63,7 +69,7 @@ class FeatureFlags:
         data: Mapping[str, Any] | None,
         *,
         environ: Mapping[str, str] | None = None,
-    ) -> "FeatureFlags":
+    ) -> FeatureFlags:
         values = asdict(cls())
         for key, value in (data or {}).items():
             if key in values:

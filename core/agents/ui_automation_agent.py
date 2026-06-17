@@ -10,7 +10,6 @@ from core.agents.base_agent import ActionResult, AgentCapability, AgentContext, 
 from core.input.human_simulator import HumanInputSimulator
 from core.utils.validation import (
     KeyValidationError,
-    clamp_coords,
     validate_key_name,
 )
 
@@ -126,7 +125,7 @@ class UIAutomationAgent(BaseAgent):
             return ActionResult(success=False, error="UI automation not started")
 
         results = []
-        for idx, action in enumerate(actions):
+        for action in actions:
             action_type = (action.get("action") or action.get("type", "")).lower().strip()
             try:
                 # Adapt coords for this computer's DPI/monitor (precise on any PC)

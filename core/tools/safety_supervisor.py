@@ -84,7 +84,14 @@ DEFAULT_TOOL_POLICIES: dict[str, ToolPolicy] = {
     "search_files": ToolPolicy(
         "search_files", "Search files by pattern.", "low", False, True, 15_000
     ),
-    "open_app": ToolPolicy("open_app", "Open a local application.", "medium", True, False, 10_000),
+    "open_app": ToolPolicy(
+        "open_app",
+        "Open an application visually (vision + mouse, no app-name detection).",
+        "medium",
+        True,
+        False,
+        10_000,
+    ),
     "move_mouse": ToolPolicy(
         "move_mouse", "Move mouse without clicking.", "medium", True, False, 5_000
     ),

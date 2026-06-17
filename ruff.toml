@@ -1,0 +1,15 @@
+# Ruff configuration for the AgentMax desktop agent (core/, scripts/, tests/, sdk/).
+# The backend service keeps its own settings in backend/pyproject.toml.
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = [
+    "E501",   # line length is owned by the formatter
+    "B008",   # FastAPI Depends()/Body() defaults are idiomatic
+    "C901",   # function complexity is reviewed manually
+    "E402",   # entry-point scripts insert the repo root into sys.path before importing
+    "UP042",  # (str, Enum) is intentional and behaviourally stable
+    "UP046",  # PEP 695 generic syntax not adopted yet
+]

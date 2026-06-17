@@ -5,8 +5,7 @@ import zipfile
 
 import pytest
 
-from core.beta.config import BetaConfig
-from core.beta.config import load_beta_config
+from core.beta.config import BetaConfig, load_beta_config
 from core.beta.diagnostics import export_diagnostics_bundle
 from core.beta.logging_service import BetaLogger
 from core.beta.redis_service import RedisService

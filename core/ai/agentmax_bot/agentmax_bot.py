@@ -10,12 +10,15 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import structlog
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 log = structlog.get_logger(__name__)
 
@@ -98,13 +101,13 @@ class BotConversation:
 
     version: AgentMaxBotVersion
 
+    created_at: datetime
+    last_message_at: datetime
+
     messages: list[BotConversationMessage] = field(default_factory=list)
 
     system_prompt: str | None = None
     custom_instructions: str | None = None
-
-    created_at: datetime
-    last_message_at: datetime
 
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -119,9 +122,9 @@ class BotConversation:
 class BotRequest:
     """Request to AgentMax Bot"""
 
-    conversation_id: str | None = None
-
     message: str
+
+    conversation_id: str | None = None
     attachments: list[dict[str, Any]] = field(default_factory=list)
 
     temperature: float | None = None
@@ -780,6 +783,8 @@ class AgentMaxBotRouter:
         self.bot = bot
 
     def get_router(self) -> APIRouter:
+        from fastapi import APIRouter, Body, HTTPException, Query
+
         router = APIRouter(prefix="/AgentMax-bot", tags=["AgentMax Bot"])
 
         @router.post("/conversations")
@@ -913,8 +918,3 @@ class AgentMaxBotRouter:
             }
 
         return router
-
-
-from datetime import timedelta
-
-from fastapi import APIRouter, Body, HTTPException, Query

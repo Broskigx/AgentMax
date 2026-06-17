@@ -476,6 +476,7 @@ class IPCServer:
         from core.ai.thinking_engine import get_thinking_engine
 
         self._thinking = get_thinking_engine()
+        self._goal_engine: Any = None  # GoalEngine, lazy-init
 
         # IPC authentication is enabled by default for the desktop product.
         # Token is always generated so the Tauri side can pick it up the
@@ -605,6 +606,9 @@ class IPCServer:
             elif path == "/api/chat":
                 return await self._handle_chat(data or {})
 
+            elif path.startswith("/api/goal"):
+                return await self._handle_goal(method, path, data or {})
+
             elif path == "/api/chat/stop":
                 if hasattr(self, "_current_chat_task") and self._current_chat_task:
                     self._current_chat_task.cancel()
@@ -672,6 +676,98 @@ class IPCServer:
             "last_7_days": tm.usage_by_day(plan="AgentMax", user="local", days=7),
         }
 
+    def _is_goal_enabled(self) -> bool:
+        """Check feature flag — /goal is OFF by default in closed beta."""
+        from core.feature_flags import load_config_profile
+
+        try:
+            profile = load_config_profile()
+            return profile.feature_flags.goal_engine
+        except Exception:
+            return False
+
+    def _goal_require_approval(self) -> bool:
+        from core.feature_flags import load_config_profile
+
+        try:
+            profile = load_config_profile()
+            return profile.feature_flags.goal_engine_require_approval
+        except Exception:
+            return True
+
+    def _get_goal_engine(self, ai_client: Any) -> Any:
+        """Lazy-init GoalEngine using the existing Redis service and AI client."""
+        if self._goal_engine is None:
+            from core.beta.redis_service import RedisService
+            from core.goal.goal_engine import GoalEngine
+
+            redis = RedisService()
+            redis.connect()
+            self._goal_engine = GoalEngine(
+                redis_service=redis,
+                bus=self._bus,
+                agent_pool=self._agent_pool,
+                ai_client=ai_client,
+                require_approval=self._goal_require_approval(),
+            )
+        return self._goal_engine
+
+    async def _handle_goal(self, method: str, path: str, data: dict) -> dict:
+        """REST handler for /api/goal endpoints."""
+        if not self._is_goal_enabled():
+            return {
+                "error": "goal_engine_disabled",
+                "message": (
+                    "El modo /goal está desactivado en esta build de beta cerrada. "
+                    "Actívalo con: feature_flags.goal_engine = true en agentmax.config.json"
+                ),
+            }
+
+        planning_agent = self._agent_pool.get("planning")
+        ai_client = getattr(planning_agent, "_claude", None) if planning_agent else None
+        if ai_client is None:
+            from core.ai.ai_router import AIRouter
+
+            ai_client = AIRouter(self._config)
+
+        engine = self._get_goal_engine(ai_client)
+        parts = path.rstrip("/").split("/")
+
+        if method == "POST" and path == "/api/goal":
+            objective = str(data.get("objective", data.get("message", ""))).strip()
+            if not objective:
+                return {"error": "objective is required"}
+            goal_id = await engine.start_goal(objective)
+            return {
+                "goal_id": goal_id,
+                "status": "running",
+                "require_approval": self._goal_require_approval(),
+            }
+
+        if method == "POST" and len(parts) == 4 and parts[-1] in {"approve", "reject"}:
+            # /api/goal/<goal_id>/approve  or  /api/goal/<goal_id>/reject
+            goal_id = parts[-2]
+            action_id = str(data.get("action_id", "")).strip()
+            approved = parts[-1] == "approve"
+            ok = engine.approve_action(goal_id, action_id) if approved else engine.reject_action(goal_id, action_id)
+            return {"goal_id": goal_id, "action_id": action_id, "approved": approved, "ok": ok}
+
+        if method == "DELETE":
+            goal_id = parts[-1]
+            ok = await engine.stop_goal(goal_id)
+            return {"goal_id": goal_id, "cancelled": ok}
+
+        if method == "GET":
+            if len(parts) >= 3 and parts[-1] != "goal":
+                goal_id = parts[-1]
+                state = engine.get_state(goal_id)
+                if state:
+                    return state.to_dict()
+                return {"error": "goal not found"}
+            return {"active": engine.list_active()}
+
+        return {"error": "unknown goal endpoint"}
+
     async def _handle_chat(self, data: dict) -> dict:
         """Process a conversational message and optionally dispatch a task."""
         import re
@@ -679,6 +775,65 @@ class IPCServer:
         message = (data.get("message") or "").strip()
         if not message:
             return {"error": "empty_message"}
+
+        # /goal <objective> — activate autonomous autoloop
+        if message.startswith("/goal "):
+            if not self._is_goal_enabled():
+                return {
+                    "reply": (
+                        "El modo /goal está desactivado en esta build de beta cerrada.\n"
+                        'Para activarlo: añade `"goal_engine": true` en agentmax.config.json'
+                    ),
+                    "task_id": None,
+                }
+            objective = message[6:].strip()
+            if not objective:
+                return {"reply": "Uso: /goal <objetivo>", "task_id": None}
+            planning_agent = self._agent_pool.get("planning")
+            ai_client = getattr(planning_agent, "_claude", None) if planning_agent else None
+            if ai_client is None:
+                from core.ai.ai_router import AIRouter
+
+                ai_client = AIRouter(self._config)
+            engine = self._get_goal_engine(ai_client)
+            goal_id = await engine.start_goal(objective)
+            approval_note = (
+                "\n⚠️ Cada acción que modifique el sistema pedirá confirmación explícita."
+                if self._goal_require_approval()
+                else ""
+            )
+            reply = (
+                f"Modo /goal activado. Objetivo: {objective}\n"
+                f"ID de goal: {goal_id[:8]}…\n"
+                "AgentMax trabajará de forma autónoma hasta completarlo. "
+                f"Puedes cancelarlo con /goal stop {goal_id[:8]}.{approval_note}"
+            )
+            return {"reply": reply, "goal_id": goal_id, "task_id": None}
+
+        if message.startswith("/goal stop "):
+            goal_id_prefix = message[11:].strip()
+            engine = self._goal_engine
+            if engine is None:
+                return {"reply": "No hay ningún goal activo.", "task_id": None}
+            active = engine.list_active()
+            matched = [gid for gid in active if gid.startswith(goal_id_prefix)]
+            if not matched:
+                return {"reply": f"No se encontró goal con ID '{goal_id_prefix}'.", "task_id": None}
+            for gid in matched:
+                await engine.stop_goal(gid)
+            return {"reply": f"Goal(s) cancelado(s): {', '.join(gid[:8] for gid in matched)}", "task_id": None}
+
+        if message.strip() == "/goal":
+            engine = self._goal_engine
+            active = engine.list_active() if engine else []
+            if not active:
+                return {"reply": "No hay goals activos. Usa: /goal <objetivo>", "task_id": None}
+            lines = ["Goals activos:"]
+            for gid in active:
+                state = engine.get_state(gid)
+                if state:
+                    lines.append(f"  • {gid[:8]}… — iter {state.iterations}/{state.max_iterations} — {state.objective[:60]}")
+            return {"reply": "\n".join(lines), "task_id": None}
 
         # Log incoming message to session logger (local, redacted).
         # NOTE: self._config.ai is an AIConfig pydantic model, NOT a dict —
