@@ -653,8 +653,7 @@ class ActionToolPlanner:
     def _required_params_from_json(self, raw: dict[str, Any]) -> tuple[str, ...]:
         if str(raw.get("id", "")) in {"app.open", "app.close"}:
             # legacy removed
-            return "computer"
-            return ("app",)
+            return ("computer",)
         explicit = self._tuple(raw.get("required_params"))
         if explicit:
             return explicit

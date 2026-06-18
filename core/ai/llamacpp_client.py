@@ -64,6 +64,7 @@ class LlamaCppSidecarClient(BaseAIClient):
             base_url=self._base_url,
         )
         self._process: asyncio.subprocess.Process | None = None
+        self._log_tasks: list[asyncio.Task] = []
         self._call_count = 0
         self._total_tokens = 0
         self._prompt_tokens = 0
@@ -146,8 +147,10 @@ class LlamaCppSidecarClient(BaseAIClient):
             stderr=asyncio.subprocess.PIPE,
             env=os.environ.copy(),
         )
-        asyncio.create_task(self._pipe_log(self._process.stdout, "stdout"))
-        asyncio.create_task(self._pipe_log(self._process.stderr, "stderr"))
+        self._log_tasks = [
+            asyncio.create_task(self._pipe_log(self._process.stdout, "stdout")),
+            asyncio.create_task(self._pipe_log(self._process.stderr, "stderr")),
+        ]
 
     async def _pipe_log(
         self,
@@ -370,6 +373,11 @@ class LlamaCppSidecarClient(BaseAIClient):
         }
 
     async def close(self) -> None:
+        for task in self._log_tasks:
+            task.cancel()
+        if self._log_tasks:
+            await asyncio.gather(*self._log_tasks, return_exceptions=True)
+        self._log_tasks.clear()
         await self._client.aclose()
         if self._process and self._process.returncode is None:
             self._process.terminate()

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from .config import BetaConfig, get_beta_config
 from .storage import StorageService
@@ -80,8 +83,8 @@ class RedisService:
         if "status" in state:
             try:
                 self.storage.update_task_status(task_id, str(state["status"]), result=state)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("redis_service.task_status_update_failed", extra={"task_id": task_id, "error": str(exc)})
 
     def getTaskState(self, task_id: str) -> dict[str, Any] | None:  # noqa: N802
         self._ensure()

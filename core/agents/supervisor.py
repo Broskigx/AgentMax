@@ -781,7 +781,7 @@ class SupervisorAgent(BaseAgent):
     async def _maybe_save_template(self, step: dict, record: TaskRecord) -> None:
         """After a successful click, persist a template crop to VisualMemory."""
         bounds = step.get("bounds")
-        if not bounds or not step.get("_confirmed") and step.get("type") != "click":
+        if not bounds or (not step.get("_confirmed") and step.get("type") != "click"):
             return
         try:
             frame = await self._capture_frame()
