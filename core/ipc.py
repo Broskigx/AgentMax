@@ -734,7 +734,7 @@ class IPCServer:
 
             ai_client = AIRouter(self._config)
 
-        engine = self._get_goal_engine(ai_client)
+        engine = await self._get_goal_engine(ai_client)
         parts = path.rstrip("/").split("/")
 
         if method == "POST" and path == "/api/goal":
@@ -873,7 +873,7 @@ class IPCServer:
                 from core.ai.ai_router import AIRouter
 
                 ai_client = AIRouter(self._config)
-            engine = self._get_goal_engine(ai_client)
+            engine = await self._get_goal_engine(ai_client)
             try:
                 goal_id = await engine.start_goal(objective)
             except RuntimeError as exc:

@@ -39,6 +39,7 @@ from backend.services.crypto_service import (
     verify_challenge_response,
 )
 from backend.services.session_service import SessionService
+from fastapi import HTTPException
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -117,12 +118,15 @@ class LicenseService:
         refresh_token_plain, refresh_token_hash = generate_refresh_token()
 
         now = datetime.now(tz=UTC)
+        # Bind the session's stored jti to the jti embedded in the access token so
+        # the token can later be matched against the session (revocation checks).
+        access_jti = str(uuid.uuid4())
         session = Session(
             license_id=lic.id,
             activation_id=activation.id,
             status=SessionStatus.ACTIVE,
             refresh_token_hash=refresh_token_hash,
-            access_token_jti=str(uuid.uuid4()),  # placeholder -- updated below
+            access_token_jti=access_jti,
             expires_at=now + timedelta(seconds=_settings.refresh_token_ttl_seconds),
             machine_fingerprint=machine_fingerprint,
             plan=plan.name,
@@ -140,6 +144,7 @@ class LicenseService:
             machine_fingerprint=machine_fingerprint,
             plan=plan.name,
             ttl=_settings.access_token_ttl_seconds,
+            extra_claims={"jti": access_jti},
         )
         offline_token = create_offline_token(
             license_id=str(lic.id),
@@ -181,11 +186,25 @@ class LicenseService:
         session_id: uuid.UUID,
         machine_fingerprint: str,
         ip_address: str | None,
+        token_jti: str = "",
     ) -> dict[str, Any]:
         """
         30-minute heartbeat -- verify license still active and refresh session state.
         """
         lic = await self._get_license(license_id)
+
+        # Validate session is still active and token hasn't been superseded
+        session = await self._sessions.get(session_id)
+        if session is None or session.status != SessionStatus.ACTIVE:
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "session_revoked", "message": "Session has been revoked or expired"},
+            )
+        if token_jti and session.access_token_jti != token_jti:
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "token_superseded", "message": "Token has been superseded by a newer session"},
+            )
 
         # Check effective status (may have expired since last check)
         effective_status = self._effective_status(lic)
