@@ -10,14 +10,18 @@ router = APIRouter(prefix="/learn")
 
 # Central aggregated lesson store (keyed by agent_id → list of lessons).
 # In a production deployment this would be backed by a real DB.
+_MAX_LESSONS = 50_000
 _lessons: list[dict] = []
 
 
 @router.post("/upload")
 async def upload_lessons(body: LessonUpload) -> dict:
     for lesson in body.lessons:
-        lesson["_agent_id"] = body.agent_id
-        _lessons.append(lesson)
+        # Copy so we never mutate the caller-provided request body in place.
+        _lessons.append({**lesson, "_agent_id": body.agent_id})
+    # Bound memory growth: keep only the most recent lessons.
+    if len(_lessons) > _MAX_LESSONS:
+        del _lessons[: len(_lessons) - _MAX_LESSONS]
     return {"ok": True, "received": len(body.lessons), "total": len(_lessons)}
 
 
@@ -27,18 +31,19 @@ async def list_lessons(
     agent_id: str = "",
     context: str = "",
 ) -> list[dict]:
+    limit = max(1, min(limit, _MAX_LESSONS))
     filtered = _lessons
     if agent_id:
-        filtered = [l for l in filtered if l.get("_agent_id") == agent_id]
+        filtered = [x for x in filtered if x.get("_agent_id") == agent_id]
     if context:
-        filtered = [l for l in filtered if l.get("context") == context]
+        filtered = [x for x in filtered if x.get("context") == context]
     return filtered[-limit:]
 
 
 @router.get("/stats")
 async def stats() -> dict:
     total = len(_lessons)
-    unresolved = sum(1 for l in _lessons if not l.get("resolved", False))
+    unresolved = sum(1 for x in _lessons if not x.get("resolved", False))
     by_agent: dict[str, int] = {}
     for lesson in _lessons:
         aid = lesson.get("_agent_id", "unknown")

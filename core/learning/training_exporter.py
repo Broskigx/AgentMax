@@ -37,17 +37,19 @@ async def export_jsonl(
     out_path = out_dir / f"autolearn_{ts}.jsonl"
 
     rows = await store.list(limit=50_000)
-    count = 0
 
-    with out_path.open("w", encoding="utf-8") as f:
-        for row in rows:
-            if resolved_only and not row["resolved"] and not include_unresolved:
-                continue
+    def _write() -> int:
+        written = 0
+        with out_path.open("w", encoding="utf-8") as f:
+            for row in rows:
+                if resolved_only and not row["resolved"] and not include_unresolved:
+                    continue
+                entry = _row_to_training_entry(row)
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                written += 1
+        return written
 
-            entry = _row_to_training_entry(row)
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            count += 1
-
+    count = await asyncio.to_thread(_write)
     return out_path, count
 
 

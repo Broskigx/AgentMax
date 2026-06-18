@@ -918,12 +918,15 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  cancelTask: async (id) => {
+  cancelTask: async (_id) => {
+    // There is no per-task cancel command exposed over IPC; emergency_stop is
+    // the real stop mechanism, so cancelling a task halts the running agent.
     const { ipcToken } = get();
-    if (!ipcToken) return;
-    try {
-      await invoke('get_task_status', { task_id: id, token: ipcToken });
-    } catch {}
+    if (ipcToken) {
+      try {
+        await invoke('emergency_stop', { token: ipcToken });
+      } catch {}
+    }
     set({ agentState: 'idle', showOverlay: false });
   },
 

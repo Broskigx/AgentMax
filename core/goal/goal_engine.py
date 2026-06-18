@@ -252,10 +252,10 @@ class GoalEngine:
             status=GoalStatus.RUNNING,
             max_iterations=self._max_iterations,
         )
-        self._save_state(state)
+        await asyncio.to_thread(self._save_state, state)
 
         task = asyncio.create_task(
-            self._run_loop(goal_id),
+            self._run_loop(goal_id, state),
             name=f"goal-{goal_id[:8]}",
         )
         self._tasks[goal_id] = task
@@ -362,9 +362,17 @@ class GoalEngine:
     # Autoloop                                                             #
     # ------------------------------------------------------------------ #
 
-    async def _run_loop(self, goal_id: str) -> None:
-        state = self._load_state(goal_id)
+    async def _run_loop(self, goal_id: str, state: GoalState | None = None) -> None:
+        # Prefer the in-memory state handed off by start_goal; fall back to the
+        # store. Keeping the autoloop alive from memory means a transient
+        # state-backend (Redis/SQLite) outage does not silently kill the goal,
+        # since persistence is best-effort (see _save_state).
+        state = state or self._load_state(goal_id)
         if not state:
+            await self._emit(
+                "goal.failed",
+                {"goal_id": goal_id, "error": "No se pudo cargar el estado del goal."},
+            )
             return
         consecutive_failures = 0
         try:

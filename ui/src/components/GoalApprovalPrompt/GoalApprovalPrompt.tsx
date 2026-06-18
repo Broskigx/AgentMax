@@ -37,8 +37,16 @@ export function GoalApprovalPrompt() {
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, [goalApprovalRequest]);
+    // Auto-reject when the countdown elapses so the UI matches the server-side
+    // approval timeout instead of leaving the dialog hanging.
+    const expiry = setTimeout(() => {
+      denyGoalAction();
+    }, goalApprovalRequest.timeoutS * 1000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(expiry);
+    };
+  }, [goalApprovalRequest, denyGoalAction]);
 
   if (!goalApprovalRequest) return null;
 

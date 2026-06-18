@@ -698,14 +698,15 @@ class IPCServer:
         except Exception:
             return True
 
-    def _get_goal_engine(self, ai_client: Any) -> Any:
+    async def _get_goal_engine(self, ai_client: Any) -> Any:
         """Lazy-init GoalEngine using the existing Redis service and AI client."""
         if self._goal_engine is None:
             from core.beta.redis_service import RedisService
             from core.goal.goal_engine import GoalEngine
 
             redis = RedisService()
-            redis.connect()
+            # connect() does blocking socket I/O — keep it off the event loop.
+            await asyncio.to_thread(redis.connect)
             self._goal_engine = GoalEngine(
                 redis_service=redis,
                 bus=self._bus,
@@ -747,7 +748,7 @@ class IPCServer:
                 "require_approval": self._goal_require_approval(),
             }
 
-        if method == "POST" and len(parts) == 4 and parts[-1] in {"approve", "reject"}:
+        if method == "POST" and len(parts) == 5 and parts[-1] in {"approve", "reject"}:
             # /api/goal/<goal_id>/approve  or  /api/goal/<goal_id>/reject
             goal_id = parts[-2]
             action_id = str(data.get("action_id", "")).strip()
@@ -830,9 +831,15 @@ class IPCServer:
             matched = [gid for gid in active if gid.startswith(goal_id_prefix)]
             if not matched:
                 return {"reply": f"No se encontró goal con ID '{goal_id_prefix}'.", "task_id": None}
-            for gid in matched:
-                await engine.stop_goal(gid)
-            return {"reply": f"Goal(s) cancelado(s): {', '.join(gid[:8] for gid in matched)}", "task_id": None}
+            if len(matched) > 1:
+                opts = ", ".join(gid[:8] for gid in matched)
+                return {
+                    "reply": f"El prefijo '{goal_id_prefix}' coincide con varios goals: {opts}. "
+                    "Especifica más caracteres del ID.",
+                    "task_id": None,
+                }
+            await engine.stop_goal(matched[0])
+            return {"reply": f"Goal cancelado: {matched[0][:8]}", "task_id": None}
 
         # /goal (no args) — list active goals
         if message.strip() == "/goal":

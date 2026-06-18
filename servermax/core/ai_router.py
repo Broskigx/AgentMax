@@ -78,6 +78,21 @@ class ClaudeBackend(AIBackend):
 class OpenAICompatBackend(AIBackend):
     """Handles LM Studio, llama.cpp, and any OpenAI-compatible local server."""
 
+    async def check_health(self) -> bool:
+        # LM Studio does not expose /health (it serves /v1/models); llama.cpp
+        # exposes both. Probe the OpenAI-standard /v1/models so all
+        # OpenAI-compatible servers are detected.
+        try:
+            t0 = time.monotonic()
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{self.url}/v1/models")
+            self.latency_ms = int((time.monotonic() - t0) * 1000)
+            self.healthy = resp.status_code < 400
+        except Exception:
+            self.healthy = False
+            self.latency_ms = None
+        return self.healthy
+
     async def chat(self, messages: list[dict], system: str = "", model: str = "") -> str:
         full_messages = (
             [{"role": "system", "content": system}] if system else []

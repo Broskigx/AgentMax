@@ -1994,7 +1994,7 @@ fn scroll_native(
                 mi: MOUSEINPUT {
                     dx: 0,
                     dy: 0,
-                    mouseData: (delta_y * 120) as u32,
+                    mouseData: delta_y.saturating_mul(120) as u32,
                     dwFlags: MOUSEEVENTF_WHEEL,
                     time: 0,
                     dwExtraInfo: 0,
@@ -2009,7 +2009,7 @@ fn scroll_native(
                 mi: MOUSEINPUT {
                     dx: 0,
                     dy: 0,
-                    mouseData: (delta_x * 120) as u32,
+                    mouseData: delta_x.saturating_mul(120) as u32,
                     dwFlags: MOUSEEVENTF_HWHEEL,
                     time: 0,
                     dwExtraInfo: 0,
