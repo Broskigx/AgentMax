@@ -1,0 +1,20 @@
+AgentMax skills layer
+=====================
+
+The skill model and the bundled skill definitions (types.py and
+data/*.toml) are adapted from the OpenJarvis project:
+
+    OpenJarvis — https://github.com/open-jarvis/OpenJarvis
+    Copyright the OpenJarvis authors.
+    Licensed under the Apache License, Version 2.0.
+
+A copy of the Apache License 2.0 is available at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Changes from the original include: renaming to the AgentMax namespace,
+modernized type hints, a tomllib-based loader and SkillRegistry, a
+dependency-injected SkillExecutor (decoupled from the OpenJarvis engine), and
+a ToolTranslator mapping OpenJarvis tool names to AgentMax tool ids. The
+heavier OpenJarvis subsystems (Ed25519 signing, remote skill sources,
+dependency graphs, importer/overlay) were intentionally not ported.
