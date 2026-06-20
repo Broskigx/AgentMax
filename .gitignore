@@ -78,3 +78,28 @@ diagnostics/
 # OS
 .DS_Store
 Thumbs.db
+
+# Nested independent clones living in this workspace (NOT part of this repo)
+/AgentMax/
+/ffg/
+
+# ML adapters / training datasets (large artifacts, kept out of git)
+/lora_adapters/
+/datasets/
+
+# Scratch notes
+/terminals/
+
+# Editor
+.vscode/
+
+# Local backup files
+*.local.bak
+
+# Local CLI tool shims (zero / cline)
+/zero
+/zero.*
+/zerocli
+/zerocli.*
+/cline
+/cline.*
