@@ -42,6 +42,7 @@ from core.tools.state import ToolStateManager
 from core.tools.validator import ToolValidator
 
 if TYPE_CHECKING:
+    from core.a2a.manager import A2AManager
     from core.mcp.manager import MCPManager
 
 log = structlog.get_logger(__name__)
@@ -65,9 +66,11 @@ class ToolExecutor:
         input_monitor: UserInputMonitor | None = None,
         security_policy: SecurityPolicy | None = None,
         mcp_manager: MCPManager | None = None,
+        a2a_manager: A2AManager | None = None,
     ) -> None:
         self.registry = registry or ToolRegistry.default()
         self.mcp_manager = mcp_manager
+        self.a2a_manager = a2a_manager
         self.validator = validator or ToolValidator()
         self.permissions = permissions or ToolPermissionManager()
         self.risk = risk or ToolRiskAnalyzer()
@@ -592,6 +595,8 @@ class ToolExecutor:
         if not handler:
             if definition.id.startswith("mcp.") and self.mcp_manager is not None:
                 return await self._run_mcp_tool(definition, request, context)
+            if definition.id.startswith("a2a.") and self.a2a_manager is not None:
+                return await self._run_a2a_tool(definition, request, context)
             return self.normalizer.failure(
                 request, "tool.handler_missing", f"No handler for {definition.id}"
             )
@@ -618,6 +623,28 @@ class ToolExecutor:
         return self.normalizer.success(
             request,
             {"success": True, "text": extract_text(result), "raw": result},
+            confidence=0.7,
+        )
+
+    async def _run_a2a_tool(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        try:
+            result = await asyncio.to_thread(
+                self.a2a_manager.call_by_id, definition.id, request.input
+            )
+        except Exception as exc:  # noqa: BLE001 - surface transport/agent errors as failure
+            return self.normalizer.failure(request, "a2a.call_failed", str(exc))
+        if not result.get("success"):
+            return self.normalizer.failure(
+                request, "a2a.task_failed", result.get("output") or "A2A task did not complete"
+            )
+        return self.normalizer.success(
+            request,
+            {"success": True, "text": result.get("output", ""), "raw": result},
             confidence=0.7,
         )
 

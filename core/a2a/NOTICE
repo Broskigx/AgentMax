@@ -1,0 +1,18 @@
+AgentMax A2A layer
+==================
+
+The modules in this package (protocol.py, client.py, and server.py) are
+adapted from the OpenJarvis project:
+
+    OpenJarvis — https://github.com/open-jarvis/OpenJarvis
+    Copyright the OpenJarvis authors.
+    Licensed under the Apache License, Version 2.0.
+
+A copy of the Apache License 2.0 is available at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Changes from the original include: renaming to the AgentMax namespace,
+modernized type hints, decoupling the A2A server from the OpenJarvis EventBus
+(now an optional on_event callback), and replacing the framework-bound
+A2AAgentTool with the A2AManager registry bridge.
