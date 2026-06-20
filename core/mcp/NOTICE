@@ -1,0 +1,17 @@
+AgentMax MCP layer
+==================
+
+The modules in this package (protocol.py, transport.py, client.py, and parts
+of server.py) are adapted from the OpenJarvis project:
+
+    OpenJarvis — https://github.com/open-jarvis/OpenJarvis
+    Copyright the OpenJarvis authors.
+    Licensed under the Apache License, Version 2.0.
+
+A copy of the Apache License 2.0 is available at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Changes from the original include: renaming to the AgentMax namespace,
+modernized type hints, a generic handler-based MCPServer (decoupled from
+OpenJarvis tool classes), and the MCPManager registry bridge.

@@ -7,7 +7,7 @@ import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -41,6 +41,9 @@ from core.tools.router import ToolRouter
 from core.tools.state import ToolStateManager
 from core.tools.validator import ToolValidator
 
+if TYPE_CHECKING:
+    from core.mcp.manager import MCPManager
+
 log = structlog.get_logger(__name__)
 
 
@@ -61,8 +64,10 @@ class ToolExecutor:
         fallback: ToolFallbackManager | None = None,
         input_monitor: UserInputMonitor | None = None,
         security_policy: SecurityPolicy | None = None,
+        mcp_manager: MCPManager | None = None,
     ) -> None:
         self.registry = registry or ToolRegistry.default()
+        self.mcp_manager = mcp_manager
         self.validator = validator or ToolValidator()
         self.permissions = permissions or ToolPermissionManager()
         self.risk = risk or ToolRiskAnalyzer()
@@ -585,10 +590,36 @@ class ToolExecutor:
         }
         handler = handlers.get(definition.id)
         if not handler:
+            if definition.id.startswith("mcp.") and self.mcp_manager is not None:
+                return await self._run_mcp_tool(definition, request, context)
             return self.normalizer.failure(
                 request, "tool.handler_missing", f"No handler for {definition.id}"
             )
         return await handler(request, context)
+
+    async def _run_mcp_tool(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        from core.mcp.manager import extract_text
+
+        try:
+            result = await asyncio.to_thread(
+                self.mcp_manager.call_by_id, definition.id, request.input
+            )
+        except Exception as exc:  # noqa: BLE001 - surface transport/server errors as failure
+            return self.normalizer.failure(request, "mcp.call_failed", str(exc))
+        if result.get("isError"):
+            return self.normalizer.failure(
+                request, "mcp.tool_error", extract_text(result) or "MCP tool returned an error"
+            )
+        return self.normalizer.success(
+            request,
+            {"success": True, "text": extract_text(result), "raw": result},
+            confidence=0.7,
+        )
 
     @staticmethod
     def _feature_flags(context: ToolExecutionContext) -> FeatureFlags:
