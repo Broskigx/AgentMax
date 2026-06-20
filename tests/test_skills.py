@@ -14,6 +14,7 @@ from typing import Any
 
 from core.skills import (
     SkillExecutor,
+    SkillManager,
     SkillManifest,
     SkillRegistry,
     SkillStep,
@@ -22,6 +23,9 @@ from core.skills import (
     render_arguments,
 )
 from core.skills.loader import SkillLoadError, manifest_from_toml
+from core.tools.executor import ToolExecutor
+from core.tools.models import ToolExecutionContext, ToolRequest
+from core.tools.registry import ToolRegistry as ToolCatalog
 
 
 @dataclass
@@ -170,3 +174,96 @@ def test_executor_reports_bad_template() -> None:
     result = SkillExecutor(_RecordingRunner()).run(skill, {})
     assert not result.success
     assert "bad template" in result.error
+
+
+# ---------------------------------------------------------------------------
+# manager <-> tool registry bridge
+# ---------------------------------------------------------------------------
+
+
+def _echo_skill() -> SkillManifest:
+    return SkillManifest(
+        name="echo",
+        description="Echo via reasoning.",
+        steps=[
+            SkillStep(
+                tool_name="think",
+                arguments_template='{"value": "{message}"}',
+                output_key="out",
+            )
+        ],
+    )
+
+
+def test_manager_registers_skills_as_tools() -> None:
+    manager = SkillManager(SkillRegistry([_echo_skill()]))
+    catalog = ToolCatalog()
+    added = manager.register_into(catalog)
+
+    assert added == ["skill.echo"]
+    definition = catalog.get("skill.echo")
+    assert definition.category == "skill"
+    assert manager.register_into(catalog) == []  # idempotent
+
+
+def test_manager_run_skill_with_injected_runner() -> None:
+    manager = SkillManager(SkillRegistry([_echo_skill()]))
+    manager.register_into(ToolCatalog())
+    runner = _RecordingRunner()
+    result = manager.run_skill("skill.echo", {"message": "hi"}, runner)
+
+    assert result.success
+    assert runner.calls[0][0] == "reasoning.raw"  # translated
+
+
+# ---------------------------------------------------------------------------
+# executor routing (full pipeline, real tool steps)
+# ---------------------------------------------------------------------------
+
+
+class _GrantAll:
+    """Minimal security manager that grants every permission."""
+
+    def check(self, permission: str, **kwargs: Any) -> bool:
+        return True
+
+
+def _resolution_skill() -> SkillManifest:
+    # Uses screen.resolution: low-risk, runs without an agent pool, and its
+    # 'read' permission resolves to SCREEN_READ for the 'screen' category.
+    return SkillManifest(
+        name="res",
+        description="Read screen resolution.",
+        steps=[SkillStep(tool_name="screen.resolution", arguments_template="{}", output_key="res")],
+    )
+
+
+async def test_executor_routes_skill_through_full_pipeline() -> None:
+    manager = SkillManager(SkillRegistry([_resolution_skill()]))
+    catalog = ToolCatalog.default()  # provides screen.resolution for the inner step
+    manager.register_into(catalog)
+
+    executor = ToolExecutor(catalog, skill_manager=manager)
+    result = await executor._run_builtin_tool(
+        catalog.get("skill.res"),
+        ToolRequest(tool_id="skill.res", input={}),
+        ToolExecutionContext(security=_GrantAll(), screen_size=(800, 600)),
+    )
+    assert result.success
+    assert result.output["steps"] == ["screen.resolution"]
+    assert "res" in result.output["outputs"]
+
+
+async def test_executor_without_skill_manager_reports_handler_missing() -> None:
+    manager = SkillManager(SkillRegistry([_echo_skill()]))
+    catalog = ToolCatalog.default()
+    manager.register_into(catalog)
+
+    executor = ToolExecutor(catalog)  # no skill_manager
+    result = await executor._run_builtin_tool(
+        catalog.get("skill.echo"),
+        ToolRequest(tool_id="skill.echo", input={"message": "hi"}),
+        ToolExecutionContext(),
+    )
+    assert not result.success
+    assert result.error_code == "tool.handler_missing"

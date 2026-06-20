@@ -16,6 +16,7 @@ from core.skills.loader import (
     load_skill,
     manifest_from_toml,
 )
+from core.skills.manager import SkillManager
 from core.skills.registry import SkillRegistry
 from core.skills.translator import TOOL_TRANSLATION, ToolTranslator
 from core.skills.types import SkillManifest, SkillResult, SkillStep, SkillStepResult
@@ -28,6 +29,7 @@ __all__ = [
     "discover_skills",
     "load_skill",
     "manifest_from_toml",
+    "SkillManager",
     "SkillRegistry",
     "TOOL_TRANSLATION",
     "ToolTranslator",

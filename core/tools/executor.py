@@ -1,4 +1,4 @@
-﻿"""Validated execution engine for AgentMax tools."""
+"""Validated execution engine for AgentMax tools."""
 
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ from core.tools.validator import ToolValidator
 if TYPE_CHECKING:
     from core.a2a.manager import A2AManager
     from core.mcp.manager import MCPManager
+    from core.skills.manager import SkillManager
 
 log = structlog.get_logger(__name__)
 
@@ -67,10 +68,12 @@ class ToolExecutor:
         security_policy: SecurityPolicy | None = None,
         mcp_manager: MCPManager | None = None,
         a2a_manager: A2AManager | None = None,
+        skill_manager: SkillManager | None = None,
     ) -> None:
         self.registry = registry or ToolRegistry.default()
         self.mcp_manager = mcp_manager
         self.a2a_manager = a2a_manager
+        self.skill_manager = skill_manager
         self.validator = validator or ToolValidator()
         self.permissions = permissions or ToolPermissionManager()
         self.risk = risk or ToolRiskAnalyzer()
@@ -177,9 +180,9 @@ class ToolExecutor:
                     )
                 self.input_monitor.configure(
                     bus=context.bus,
-                    authorization_validator=lambda _task_id: self.permissions.validate(
-                        definition, request, context
-                    ).ok,
+                    authorization_validator=lambda _task_id: (
+                        self.permissions.validate(definition, request, context).ok
+                    ),
                 )
                 self.input_monitor.start_task(request.task_id)
                 try:
@@ -193,9 +196,7 @@ class ToolExecutor:
                         attempt=attempt,
                     )
                 except PermissionError as exc:
-                    return self.normalizer.failure(
-                        request, "tool.permission_required", str(exc)
-                    )
+                    return self.normalizer.failure(request, "tool.permission_required", str(exc))
                 finally:
                     self.input_monitor.stop_task()
         return await self._execute_once_locked(
@@ -597,6 +598,8 @@ class ToolExecutor:
                 return await self._run_mcp_tool(definition, request, context)
             if definition.id.startswith("a2a.") and self.a2a_manager is not None:
                 return await self._run_a2a_tool(definition, request, context)
+            if definition.id.startswith("skill.") and self.skill_manager is not None:
+                return await self._run_skill_tool(definition, request, context)
             return self.normalizer.failure(
                 request, "tool.handler_missing", f"No handler for {definition.id}"
             )
@@ -645,6 +648,48 @@ class ToolExecutor:
         return self.normalizer.success(
             request,
             {"success": True, "text": result.get("output", ""), "raw": result},
+            confidence=0.7,
+        )
+
+    async def _run_skill_tool(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        loop = asyncio.get_running_loop()
+
+        def run_tool(tool_id: str, arguments: dict[str, Any]) -> ToolResult:
+            # Each skill step re-enters the full execution pipeline so it gets
+            # its own risk/permission checks; the skill's approval propagates.
+            step_request = ToolRequest(
+                tool_id=tool_id,
+                input=arguments,
+                task_id=request.task_id,
+                safe_mode=request.safe_mode,
+                approved_risk=request.approved_risk,
+            )
+            future = asyncio.run_coroutine_threadsafe(self.execute(step_request, context), loop)
+            return future.result()
+
+        try:
+            skill_result = await asyncio.to_thread(
+                self.skill_manager.run_skill, definition.id, request.input, run_tool
+            )
+        except Exception as exc:  # noqa: BLE001 - surface skill wiring errors as failure
+            return self.normalizer.failure(request, "skill.run_failed", str(exc))
+
+        if not skill_result.success:
+            return self.normalizer.failure(
+                request, "skill.step_failed", skill_result.error or "Skill did not complete"
+            )
+        return self.normalizer.success(
+            request,
+            {
+                "success": True,
+                "outputs": skill_result.outputs,
+                "steps": [s.tool_id for s in skill_result.steps],
+            },
             confidence=0.7,
         )
 
@@ -726,9 +771,7 @@ class ToolExecutor:
                                 int(point[0]), int(point[1])
                             )
                 elif action.get("x") is not None and action.get("y") is not None:
-                    self.input_monitor.record_agent_mouse_action(
-                        int(action["x"]), int(action["y"])
-                    )
+                    self.input_monitor.record_agent_mouse_action(int(action["x"]), int(action["y"]))
             elif action_type in {"type", "key", "hotkey", "press"}:
                 self.input_monitor.record_agent_keyboard_action()
             normalized_actions.append(action)
@@ -760,9 +803,7 @@ class ToolExecutor:
         action = await ui.click(step)
         return self.normalizer.from_action_result(request, action)
 
-    async def _mouse_drag(
-        self, request: ToolRequest, context: ToolExecutionContext
-    ) -> ToolResult:
+    async def _mouse_drag(self, request: ToolRequest, context: ToolExecutionContext) -> ToolResult:
         ui = self._ui_agent(context)
         if not ui:
             return self.normalizer.failure(
@@ -925,9 +966,15 @@ class ToolExecutor:
     async def _app_open(self, request: ToolRequest, context: ToolExecutionContext) -> ToolResult:
         # Pure vision + mouse only. No word-based app names.
         # Expect vision-provided target (description or coords) or use computer actions.
-        target = str(request.input.get("target", "") or request.input.get("description", "")).strip()
+        target = str(
+            request.input.get("target", "") or request.input.get("description", "")
+        ).strip()
         if not target:
-            return self.normalizer.failure(request, "app.target_missing", "Visual target or description required (no app names)")
+            return self.normalizer.failure(
+                request,
+                "app.target_missing",
+                "Visual target or description required (no app names)",
+            )
         if context.agent_pool.get("ui_automation"):
             ui = context.agent_pool["ui_automation"]
             # Use vision-based navigate (no "app" param)
@@ -937,19 +984,38 @@ class ToolExecutor:
             if request.safe_mode:
                 return self.normalizer.from_action_result(request, action)
         # Fallback: no shell commands for apps; AI must use mouse/vision.
-        return self.normalizer.failure(request, "app.open_vision_only", "App open requires vision + mouse (no name detection or shell)")
+        return self.normalizer.failure(
+            request,
+            "app.open_vision_only",
+            "App open requires vision + mouse (no name detection or shell)",
+        )
 
     async def _app_close(self, request: ToolRequest, context: ToolExecutionContext) -> ToolResult:
         # Pure vision + mouse only. Use computer tool or vision to click close button.
-        target = str(request.input.get("target", "") or request.input.get("description", "")).strip()
+        target = str(
+            request.input.get("target", "") or request.input.get("description", "")
+        ).strip()
         if not target:
-            return self.normalizer.failure(request, "app.target_missing", "Visual target/description required for close (vision + mouse; no process names)")
+            return self.normalizer.failure(
+                request,
+                "app.target_missing",
+                "Visual target/description required for close (vision + mouse; no process names)",
+            )
         if context.agent_pool.get("ui_automation"):
             ui = context.agent_pool["ui_automation"]
-            action = await ui.navigate({"target": target, "description": f"visually locate and close {target} window by clicking X or using Alt+F4"})
+            action = await ui.navigate(
+                {
+                    "target": target,
+                    "description": f"visually locate and close {target} window by clicking X or using Alt+F4",
+                }
+            )
             if action.success:
                 return self.normalizer.from_action_result(request, action)
-        return self.normalizer.failure(request, "app.close_vision_only", "Close requires vision-based mouse action on close button")
+        return self.normalizer.failure(
+            request,
+            "app.close_vision_only",
+            "Close requires vision-based mouse action on close button",
+        )
 
     async def _shell_run(self, request: ToolRequest, context: ToolExecutionContext) -> ToolResult:
         command = str(request.input.get("command", ""))
