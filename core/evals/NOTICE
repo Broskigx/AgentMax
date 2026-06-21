@@ -1,0 +1,20 @@
+AgentMax evals layer
+====================
+
+The design of this evaluation harness (the scorer / case / report contract) and
+the normalized-match logic in scorers.py are adapted from the OpenJarvis
+project:
+
+    OpenJarvis — https://github.com/open-jarvis/OpenJarvis
+    Copyright the OpenJarvis authors.
+    Licensed under the Apache License, Version 2.0.
+
+A copy of the Apache License 2.0 is available at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This is a deliberately reduced port: only the self-contained core was taken
+(case/scorer/report types, generic scorers, a runner, JSONL dataset loading).
+OpenJarvis's inference backends, HuggingFace dataset providers, benchmark-
+specific scorers (SWE-bench, GAIA, MMLU, …), agentic runner, trackers, and CLI
+were intentionally not ported.
