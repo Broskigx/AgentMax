@@ -30,6 +30,8 @@ _SCOPE_MAP: dict[tuple[str, str], str] = {
     ("keyboard", "input"): "INPUT_KEYBOARD",
     ("app", "input"): "INPUT_MOUSE",
     ("app", "read"): "SCREEN_READ",
+    ("ui", "input"): "INPUT_MOUSE",
+    ("ui", "read"): "SCREEN_READ",
     ("browser", "network"): "NETWORK",
     ("network", "network"): "NETWORK",
     ("shell", "elevated"): "PROCESS_LAUNCH",
@@ -37,6 +39,18 @@ _SCOPE_MAP: dict[tuple[str, str], str] = {
     ("process", "elevated"): "PROCESS_LAUNCH",
     ("process", "destructive"): "PROCESS_LAUNCH",
 }
+
+# Internal, read-only scopes that need no OS runtime permission. These are
+# pure in-process operations (reasoning passthrough, idle check, local memory
+# recall) — gating them behind an OS capability would be both meaningless and
+# would let a missing grant break the safety subsystem.
+_NO_RUNTIME_PERMISSION: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("reasoning", "read"),
+        ("safety", "read"),
+        ("memory", "read"),
+    }
+)
 
 
 def _computer_permissions(request: ToolRequest) -> list[str]:
@@ -72,8 +86,7 @@ class ToolPermissionManager:
         resolved: list[tuple[str, str | None]]
         if definition.id == "computer.execute":
             resolved = [
-                (permission.lower(), permission)
-                for permission in _computer_permissions(request)
+                (permission.lower(), permission) for permission in _computer_permissions(request)
             ]
         else:
             resolved = [
@@ -84,6 +97,8 @@ class ToolPermissionManager:
                 resolved.append(("screen.read", "SCREEN_READ"))
         resolved = list(dict.fromkeys(resolved))
         for scope, runtime_permission in resolved:
+            if (definition.category, scope) in _NO_RUNTIME_PERMISSION:
+                continue
             if not runtime_permission:
                 report.add(
                     "permission.unknown",
