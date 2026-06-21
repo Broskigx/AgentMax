@@ -20,6 +20,7 @@ from core.a2a import (
     A2ATask,
     AgentCard,
     TaskState,
+    build_agent_a2a_server,
 )
 from core.tools.executor import ToolExecutor
 from core.tools.models import ToolExecutionContext, ToolRequest
@@ -200,3 +201,30 @@ async def test_executor_without_a2a_manager_reports_handler_missing() -> None:
     )
     assert not result.success
     assert result.error_code == "tool.handler_missing"
+
+
+# ---------------------------------------------------------------------------
+# server side: expose AgentMax as an A2A server
+# ---------------------------------------------------------------------------
+
+
+def test_build_agent_a2a_server_card_and_handler() -> None:
+    server = build_agent_a2a_server(
+        lambda text: f"ok: {text}",
+        name="AgentMax",
+        skills=["file-organizer"],
+        capabilities=["chat"],
+    )
+    assert server.agent_card.name == "AgentMax"
+    assert server.agent_card.skills == ["file-organizer"]
+    assert server.agent_card.capabilities == ["chat"]
+
+    resp = server.handle_request(A2ARequest("tasks/send", {"input": "go"}).to_dict())
+    assert resp["result"]["output"] == "ok: go"
+
+
+def test_build_agent_a2a_server_with_auth() -> None:
+    server = build_agent_a2a_server(lambda text: text, auth_token="k")
+    req = A2ARequest("tasks/send", {"input": "x"}).to_dict()
+    assert server.handle_request(req)["error"]["code"] == -32001
+    assert server.handle_request(req, token="k")["result"]["state"] == "completed"

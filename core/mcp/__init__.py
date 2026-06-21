@@ -16,6 +16,7 @@ from core.mcp.protocol import (
     MCPRequest,
     MCPResponse,
 )
+from core.mcp.registry_server import build_tool_mcp_server, tool_to_mcp
 from core.mcp.server import MCPServer, MCPTool
 from core.mcp.transport import (
     InProcessTransport,
@@ -36,6 +37,8 @@ __all__ = [
     "MCPResponse",
     "MCPServer",
     "MCPTool",
+    "build_tool_mcp_server",
+    "tool_to_mcp",
     "InProcessTransport",
     "MCPTransport",
     "SSETransport",
