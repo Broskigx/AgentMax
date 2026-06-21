@@ -21,6 +21,7 @@ from core.ai.thinking_engine import get_thinking_engine
 from core.event_bus import Event
 from core.htlgg import DecisionRecord, HtlggEnvelope, RiskLevel
 from core.tools.executor import ToolExecutor
+from core.tools.integrations import wire_capabilities
 from core.tools.logger import ToolLogger
 from core.tools.registry import ToolRegistry
 from core.tools.state import ToolStateManager
@@ -104,10 +105,16 @@ class SupervisorAgent(BaseAgent):
         self._pixel_analyzer = None  # lazily created once, reused across tasks
         self._tool_state = ToolStateManager()
         self._tool_registry = ToolRegistry.default()
+        # Surface bundled skills as skill.* tools and ready the MCP/A2A managers
+        # (external servers/agents connect lazily at runtime).
+        self._capabilities = wire_capabilities(self._tool_registry)
         self._tool_executor = ToolExecutor(
             self._tool_registry,
             logger=ToolLogger(ctx.bus, ctx.audit),
             state=self._tool_state,
+            mcp_manager=self._capabilities.mcp,
+            a2a_manager=self._capabilities.a2a,
+            skill_manager=self._capabilities.skills,
         )
 
     @property
