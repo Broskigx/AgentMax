@@ -184,6 +184,10 @@ class SessionService:
             )
         )
 
+    async def get(self, session_id: uuid.UUID) -> Session | None:
+        result = await self._db.execute(select(Session).where(Session.id == session_id))
+        return result.scalar_one_or_none()
+
     async def get_active_for_license(self, license_id: uuid.UUID) -> list[Session]:
         result = await self._db.execute(
             select(Session).where(

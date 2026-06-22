@@ -7,6 +7,7 @@ import { AgentControlCursor } from './components/AgentControlCursor/AgentControl
 import { Overlay } from './components/Overlay/Overlay';
 import { HUDCanvas } from './components/HUD/HUDCanvas';
 import { ComputerMaxPrompt } from './components/ComputerMaxPrompt/ComputerMaxPrompt';
+import { GoalApprovalPrompt } from './components/GoalApprovalPrompt/GoalApprovalPrompt';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { Onboarding } from './components/Onboarding/Onboarding';
 import { applyVisualCompatibilityProfile } from './lib/visualCompatibility';
@@ -131,7 +132,7 @@ function getWindowLabel() {
   }
 }
 
-function installInteractionGuards(emergencyStop: () => void, showCommandPalette: boolean, setShowCommandPalette: (value: boolean) => void) {
+function installInteractionGuards() {
   (window as Window & { __AGENTMAX_GUARDS_ACTIVE?: boolean }).__AGENTMAX_GUARDS_ACTIVE = true;
   document.documentElement.dataset.AgentMaxGuards = 'active';
 
@@ -149,11 +150,13 @@ function installInteractionGuards(emergencyStop: () => void, showCommandPalette:
       event.preventDefault();
       event.stopPropagation();
       if (event.key === 'F12' || (event.ctrlKey && event.shiftKey && event.key === 'Escape')) {
-        emergencyStop();
+        useAgentStore.getState().emergencyStop();
       }
       return;
     }
 
+    // Read live state so the listener never goes stale (installed once at mount).
+    const { showCommandPalette, setShowCommandPalette } = useAgentStore.getState();
     if (event.ctrlKey && event.key === 'k') {
       event.preventDefault();
       setShowCommandPalette(!showCommandPalette);
@@ -182,8 +185,8 @@ function installInteractionGuards(emergencyStop: () => void, showCommandPalette:
 function AppContent() {
   const windowLabel = getWindowLabel();
 
-  useEffect(() => applyVisualCompatibilityProfile(), []);
-
+  // The hud window renders a completely different tree. Branch BEFORE any hooks
+  // so the two render paths never run a different number of hooks (Rules of Hooks).
   if (windowLabel === 'hud') {
     return (
       <div style={{ width: '100vw', height: '100vh', background: 'transparent', overflow: 'hidden' }}>
@@ -192,15 +195,18 @@ function AppContent() {
     );
   }
 
+  return <MainApp />;
+}
+
+function MainApp() {
+  useEffect(() => applyVisualCompatibilityProfile(), []);
+
   const {
     connect,
     initToken,
     refreshConnectionStatus,
     agentState,
     showOverlay,
-    showCommandPalette,
-    setShowCommandPalette,
-    emergencyStop,
     connectionBanner,
     backendOnline,
   } = useAgentStore();
@@ -232,18 +238,17 @@ function AppContent() {
       // ignore storage errors in restricted webviews
     }
 
-    const cleanupGuards = installInteractionGuards(
-      emergencyStop,
-      showCommandPalette,
-      setShowCommandPalette,
-    );
+    const cleanupGuards = installInteractionGuards();
 
     return () => {
       active = false;
       window.clearInterval(statusPoll);
       cleanupGuards?.();
     };
-  }, [connect, initToken, refreshConnectionStatus, emergencyStop, showCommandPalette, setShowCommandPalette]);
+    // Bootstrap runs once on mount. Zustand actions are stable references; the
+    // guard listener reads live state via getState() so no extra deps needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     setAgentMaxAvailable(backendOnline);
@@ -292,6 +297,7 @@ function AppContent() {
         <MainWindow />
         <AgentControlCursor />
         <ComputerMaxPrompt />
+        <GoalApprovalPrompt />
         <CommandPalette />
       </div>
     </div>

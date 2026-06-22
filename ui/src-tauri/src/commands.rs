@@ -500,7 +500,7 @@ pub fn capture_screen_colors(
         let hdc = GetDC(None);
         let mdc = CreateCompatibleDC(Some(hdc));
         let bmp = CreateCompatibleBitmap(hdc, sw, sh);
-        let _ = SelectObject(mdc, bmp.into());
+        let old_obj = SelectObject(mdc, bmp.into());
         let _ = BitBlt(mdc, 0, 0, sw, sh, Some(hdc), 0, 0, SRCCOPY | CAPTUREBLT);
 
         let mut desc = format!("[MÓDULO PANTALLA — {}×{} px — mapa hex 10×7]\n", sw, sh);
@@ -517,6 +517,9 @@ pub fn capture_screen_colors(
             desc.push('\n');
         }
 
+        // Restore the DC's original bitmap before deleting ours, otherwise the
+        // still-selected bitmap cannot be freed and leaks one HBITMAP per call.
+        let _ = SelectObject(mdc, old_obj);
         let _ = DeleteObject(bmp.into());
         let _ = DeleteDC(mdc);
         let _ = ReleaseDC(None, hdc);

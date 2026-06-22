@@ -97,7 +97,9 @@ async def stats_timeline(
         .group_by(func.date(Activation.created_at))
         .order_by(func.date(Activation.created_at))
     )
-    act_by_day = {row.day: row.count for row in act_rows}
+    # func.date() yields a date on PostgreSQL but a 'YYYY-MM-DD' string on
+    # SQLite; normalise to ISO strings so lookups work on both dialects.
+    act_by_day = {str(row.day): row.count for row in act_rows}
 
     ses_rows = await db.execute(
         select(
@@ -108,17 +110,21 @@ async def stats_timeline(
         .group_by(func.date(Session.created_at))
         .order_by(func.date(Session.created_at))
     )
-    ses_by_day = {row.day: row.count for row in ses_rows}
+    ses_by_day = {str(row.day): row.count for row in ses_rows}
 
     today = datetime.now(tz=UTC).date()
-    return [
-        {
-            "date": f"{(today - timedelta(days=days - 1 - i)).strftime('%b')} {(today - timedelta(days=days - 1 - i)).day}",
-            "activations": act_by_day.get(today - timedelta(days=days - 1 - i), 0),
-            "sessions": ses_by_day.get(today - timedelta(days=days - 1 - i), 0),
-        }
-        for i in range(days)
-    ]
+    out = []
+    for i in range(days):
+        day = today - timedelta(days=days - 1 - i)
+        key = day.isoformat()
+        out.append(
+            {
+                "date": f"{day.strftime('%b')} {day.day}",
+                "activations": act_by_day.get(key, 0),
+                "sessions": ses_by_day.get(key, 0),
+            }
+        )
+    return out
 
 
 # ── Plans ─────────────────────────────────────────────────────────────────────

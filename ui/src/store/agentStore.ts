@@ -306,6 +306,14 @@ interface ComputerControlRequest {
   requestedPermissions: string[];
 }
 
+interface GoalApprovalRequest {
+  goalId: string;
+  actionId: string;
+  actionType: string;
+  params: Record<string, unknown>;
+  timeoutS: number;
+}
+
 interface AgentStore {
   ipcToken: string | null;
   initToken: () => Promise<void>;
@@ -346,6 +354,7 @@ interface AgentStore {
   computerControlCommand: string | null;
   computerControlRequest: ComputerControlRequest | null;
   pendingComputerControlMessageId: string | null;
+  goalApprovalRequest: GoalApprovalRequest | null;
   chatAbortController: AbortController | null;
   backendOnline: boolean;
   connectionBanner: string | null;
@@ -381,6 +390,8 @@ interface AgentStore {
   updateAdvancedAISettings: (patch: Partial<AdvancedAISettings>) => void;
   approveComputerControl: () => Promise<void>;
   denyComputerControl: () => void;
+  approveGoalAction: () => Promise<void>;
+  denyGoalAction: () => void;
   setMinimized: (v: boolean) => void;
   confirmElement: (taskId: string, confirmed: boolean) => void;
   dismissLearningPrompt: () => void;
@@ -469,6 +480,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   computerControlCommand: null,
   computerControlRequest: null,
   pendingComputerControlMessageId: null,
+  goalApprovalRequest: null,
   chatAbortController: null,
 
   connect: () => {
@@ -906,12 +918,15 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  cancelTask: async (id) => {
+  cancelTask: async (_id) => {
+    // There is no per-task cancel command exposed over IPC; emergency_stop is
+    // the real stop mechanism, so cancelling a task halts the running agent.
     const { ipcToken } = get();
-    if (!ipcToken) return;
-    try {
-      await invoke('get_task_status', { task_id: id, token: ipcToken });
-    } catch {}
+    if (ipcToken) {
+      try {
+        await invoke('emergency_stop', { token: ipcToken });
+      } catch {}
+    }
     set({ agentState: 'idle', showOverlay: false });
   },
 
@@ -1081,6 +1096,31 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         pendingComputerControlMessageId: null,
       };
     });
+  },
+  approveGoalAction: async () => {
+    const req = get().goalApprovalRequest;
+    if (!req) return;
+    try {
+      const res = await apiFetch(`/api/goal/${encodeURIComponent(req.goalId)}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_id: req.actionId }),
+      });
+      if (res.ok) set({ goalApprovalRequest: null });
+      // on failure: keep dialog open so user can retry before the 120s timeout
+    } catch {
+      // keep dialog open on network error
+    }
+  },
+  denyGoalAction: () => {
+    const req = get().goalApprovalRequest;
+    if (!req) return;
+    set({ goalApprovalRequest: null });
+    apiFetch(`/api/goal/${encodeURIComponent(req.goalId)}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action_id: req.actionId }),
+    }).catch(() => {});
   },
   setMinimized: (v) => set({ isMinimized: v }),
   confirmElement: (_taskId, _confirmed) => set({ learningPrompt: null }),
@@ -1297,6 +1337,21 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           ...next,
           messages: nextMsgs,
         };
+      }
+      else if (topic === 'goal.action_requires_approval' && payload) {
+        next = {
+          ...next,
+          goalApprovalRequest: {
+            goalId: String(payload.goal_id ?? ''),
+            actionId: String(payload.action_id ?? ''),
+            actionType: String(payload.action_type ?? ''),
+            params: (payload.params ?? {}) as Record<string, unknown>,
+            timeoutS: Number(payload.timeout_s ?? 120),
+          },
+        };
+      }
+      else if (topic === 'goal.action_decision') {
+        next = { ...next, goalApprovalRequest: null };
       }
       else if (topic.startsWith('tool.') && payload) {
         const toolId = String(payload.tool_id || payload.tool || 'tool');

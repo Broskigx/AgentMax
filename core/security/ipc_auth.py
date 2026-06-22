@@ -203,6 +203,45 @@ def validate_token(presented: str | None, expected: str) -> bool:
     return hmac.compare_digest(presented.strip(), expected.strip())
 
 
+# ── Anti DNS-rebinding / cross-origin ────────────────────────────────────────
+
+# Loopback host names accepted in the HTTP Host header. A DNS-rebinding page
+# served from attacker.com (resolving to 127.0.0.1) sends Host: attacker.com,
+# so rejecting non-loopback Host headers blocks that class of attack regardless
+# of the auth token state.
+_ALLOWED_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+# Origins accepted on the WebSocket handshake. ``None`` allows a missing Origin
+# header (native, non-browser clients such as the Tauri shell). Browser pages
+# always send Origin, so a rebinding/cross-origin page is rejected here.
+ALLOWED_WS_ORIGINS: tuple[str | None, ...] = (
+    None,
+    "tauri://localhost",
+    "http://localhost:1420",
+    "http://127.0.0.1:1420",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
+
+
+def is_allowed_host(host_header: str | None) -> bool:
+    """Accept only loopback Host headers (anti DNS-rebinding).
+
+    A missing Host header is allowed (non-browser native client); browsers
+    always send one, which is what the rebinding attack relies on.
+    """
+    if not host_header:
+        return True
+    host = host_header.strip().lower()
+    if host.startswith("["):  # bracketed IPv6, e.g. [::1] or [::1]:7790
+        name = host.split("]", 1)[0] + "]"
+    elif host.count(":") > 1:  # bare IPv6 without brackets, no port (e.g. ::1)
+        name = host
+    else:
+        name = host.rsplit(":", 1)[0] if ":" in host else host
+    return name in _ALLOWED_HOST_NAMES
+
+
 # ── REST middleware (FastAPI-friendly) ───────────────────────────────────────
 
 
@@ -312,11 +351,13 @@ __all__ = [
     "AUTH_FLAG_ENV",
     "AUTH_HEADER",
     "EXEMPT_PATH_PREFIXES",
+    "ALLOWED_WS_ORIGINS",
     "IPCAuthError",
     "ensure_token",
     "token_file_path",
     "is_auth_enabled",
     "is_exempt_path",
+    "is_allowed_host",
     "validate_token",
     "check_rest_request",
     "authenticate_ws",

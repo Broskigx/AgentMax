@@ -13,8 +13,8 @@ AgentMax is **proprietary, closed-source software**. As a closed-beta tester you
 
 | Platform | Status |
 |----------|--------|
-| **Windows 10/11** | Supported for this closed beta |
-| **Linux / macOS** | **Not supported** for computer control (mouse/keyboard/screenshot stubs) |
+| **Windows 10/11** | Supported — installer provided for this closed beta |
+| **Linux / macOS** | Experimental / unsupported this round. Desktop control is implemented but not built or QA-tested, and needs external tools (`cliclick` on macOS; `xdotool` or `ydotool`+`grim` on Linux) |
 
 ## Requirements
 

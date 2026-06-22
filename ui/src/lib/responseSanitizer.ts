@@ -8,6 +8,7 @@ export interface SanitizedResponse {
 const THINK_BLOCK_RE = /<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi;
 const THINK_OPEN_RE = /<\s*think\s*>/i;
 const THINK_CLOSE_RE = /<\s*\/\s*think\s*>/i;
+const THINK_CLOSE_RE_G = /<\s*\/\s*think\s*>/gi;
 const SYSTEM_PROMPT_RE = /^\s*(system|developer)\s*:\s*[\s\S]*?(?=(assistant|user)\s*:|$)/i;
 
 export function sanitizeModelResponse(raw: string, maxChars = 12_000): SanitizedResponse {
@@ -21,7 +22,7 @@ export function sanitizeModelResponse(raw: string, maxChars = 12_000): Sanitized
 
   text = text.replace(THINK_BLOCK_RE, '');
   text = text.split(THINK_OPEN_RE)[0] || text;
-  text = text.replace(THINK_CLOSE_RE, '');
+  text = text.replace(THINK_CLOSE_RE_G, '');
 
   const beforeSystem = text;
   text = text.replace(SYSTEM_PROMPT_RE, '').trim();

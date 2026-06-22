@@ -609,6 +609,9 @@ class IPCServer:
             elif path.startswith("/api/goal"):
                 return await self._handle_goal(method, path, data or {})
 
+            elif path.startswith("/api/learn"):
+                return await self._handle_learn(method, path, data or {})
+
             elif path == "/api/chat/stop":
                 if hasattr(self, "_current_chat_task") and self._current_chat_task:
                     self._current_chat_task.cancel()
@@ -695,14 +698,15 @@ class IPCServer:
         except Exception:
             return True
 
-    def _get_goal_engine(self, ai_client: Any) -> Any:
+    async def _get_goal_engine(self, ai_client: Any) -> Any:
         """Lazy-init GoalEngine using the existing Redis service and AI client."""
         if self._goal_engine is None:
             from core.beta.redis_service import RedisService
             from core.goal.goal_engine import GoalEngine
 
             redis = RedisService()
-            redis.connect()
+            # connect() does blocking socket I/O — keep it off the event loop.
+            await asyncio.to_thread(redis.connect)
             self._goal_engine = GoalEngine(
                 redis_service=redis,
                 bus=self._bus,
@@ -730,7 +734,7 @@ class IPCServer:
 
             ai_client = AIRouter(self._config)
 
-        engine = self._get_goal_engine(ai_client)
+        engine = await self._get_goal_engine(ai_client)
         parts = path.rstrip("/").split("/")
 
         if method == "POST" and path == "/api/goal":
@@ -744,7 +748,7 @@ class IPCServer:
                 "require_approval": self._goal_require_approval(),
             }
 
-        if method == "POST" and len(parts) == 4 and parts[-1] in {"approve", "reject"}:
+        if method == "POST" and len(parts) == 5 and parts[-1] in {"approve", "reject"}:
             # /api/goal/<goal_id>/approve  or  /api/goal/<goal_id>/reject
             goal_id = parts[-2]
             action_id = str(data.get("action_id", "")).strip()
@@ -768,6 +772,41 @@ class IPCServer:
 
         return {"error": "unknown goal endpoint"}
 
+    async def _handle_learn(self, method: str, path: str, data: dict) -> dict:
+        """REST handler for /api/learn endpoints."""
+        from core.learning.auto_learn import AutoLearnEngine
+        from core.learning.training_exporter import export_jsonl
+
+        # Reuse the GoalEngine's AutoLearnEngine if available, else create one.
+        engine = self._goal_engine
+        learn: AutoLearnEngine = (
+            engine._learn if engine is not None else AutoLearnEngine()
+        )
+
+        if path == "/api/learn/stats":
+            return await learn.stats()
+
+        if path == "/api/learn/lessons":
+            unresolved_only = bool(data.get("unresolved_only"))
+            context = str(data.get("context") or "")
+            limit = min(int(data.get("limit") or 100), 500)
+            rows = await learn.get_lessons(limit=limit, unresolved_only=unresolved_only, context=context)
+            return {"lessons": rows, "count": len(rows)}
+
+        if path == "/api/learn/export" and method == "POST":
+            out_path, count = await export_jsonl(learn.store)
+            return {"exported": count, "path": str(out_path)}
+
+        if path == "/api/learn/resolve" and method == "POST":
+            lesson_id = str(data.get("lesson_id") or "").strip()
+            resolution = str(data.get("resolution") or "").strip()
+            if not lesson_id:
+                return {"error": "lesson_id required"}
+            ok = await learn.record_success(lesson_id=lesson_id, resolution=resolution)
+            return {"ok": ok, "lesson_id": lesson_id}
+
+        return {"error": "unknown learn endpoint"}
+
     async def _handle_chat(self, data: dict) -> dict:
         """Process a conversational message and optionally dispatch a task."""
         import re
@@ -775,6 +814,45 @@ class IPCServer:
         message = (data.get("message") or "").strip()
         if not message:
             return {"error": "empty_message"}
+
+        # NOTE: order matters — "/goal stop ..." and bare "/goal" must be
+        # checked before the generic "/goal <objective>" prefix, otherwise
+        # "stop ..." would be parsed as an objective.
+
+        # /goal stop <id> — cancel a running goal
+        if message.startswith("/goal stop "):
+            goal_id_prefix = message[11:].strip()
+            if not goal_id_prefix:
+                return {"reply": "Uso: /goal stop <id>", "task_id": None}
+            engine = self._goal_engine
+            if engine is None:
+                return {"reply": "No hay ningún goal activo.", "task_id": None}
+            active = engine.list_active()
+            matched = [gid for gid in active if gid.startswith(goal_id_prefix)]
+            if not matched:
+                return {"reply": f"No se encontró goal con ID '{goal_id_prefix}'.", "task_id": None}
+            if len(matched) > 1:
+                opts = ", ".join(gid[:8] for gid in matched)
+                return {
+                    "reply": f"El prefijo '{goal_id_prefix}' coincide con varios goals: {opts}. "
+                    "Especifica más caracteres del ID.",
+                    "task_id": None,
+                }
+            await engine.stop_goal(matched[0])
+            return {"reply": f"Goal cancelado: {matched[0][:8]}", "task_id": None}
+
+        # /goal (no args) — list active goals
+        if message.strip() == "/goal":
+            engine = self._goal_engine
+            active = engine.list_active() if engine else []
+            if not active:
+                return {"reply": "No hay goals activos. Usa: /goal <objetivo>", "task_id": None}
+            lines = ["Goals activos:"]
+            for gid in active:
+                state = engine.get_state(gid)
+                if state:
+                    lines.append(f"  • {gid[:8]}… — iter {state.iterations}/{state.max_iterations} — {state.objective[:60]}")
+            return {"reply": "\n".join(lines), "task_id": None}
 
         # /goal <objective> — activate autonomous autoloop
         if message.startswith("/goal "):
@@ -795,8 +873,11 @@ class IPCServer:
                 from core.ai.ai_router import AIRouter
 
                 ai_client = AIRouter(self._config)
-            engine = self._get_goal_engine(ai_client)
-            goal_id = await engine.start_goal(objective)
+            engine = await self._get_goal_engine(ai_client)
+            try:
+                goal_id = await engine.start_goal(objective)
+            except RuntimeError as exc:
+                return {"reply": f"No se pudo iniciar el goal: {exc}", "task_id": None}
             approval_note = (
                 "\n⚠️ Cada acción que modifique el sistema pedirá confirmación explícita."
                 if self._goal_require_approval()
@@ -809,31 +890,6 @@ class IPCServer:
                 f"Puedes cancelarlo con /goal stop {goal_id[:8]}.{approval_note}"
             )
             return {"reply": reply, "goal_id": goal_id, "task_id": None}
-
-        if message.startswith("/goal stop "):
-            goal_id_prefix = message[11:].strip()
-            engine = self._goal_engine
-            if engine is None:
-                return {"reply": "No hay ningún goal activo.", "task_id": None}
-            active = engine.list_active()
-            matched = [gid for gid in active if gid.startswith(goal_id_prefix)]
-            if not matched:
-                return {"reply": f"No se encontró goal con ID '{goal_id_prefix}'.", "task_id": None}
-            for gid in matched:
-                await engine.stop_goal(gid)
-            return {"reply": f"Goal(s) cancelado(s): {', '.join(gid[:8] for gid in matched)}", "task_id": None}
-
-        if message.strip() == "/goal":
-            engine = self._goal_engine
-            active = engine.list_active() if engine else []
-            if not active:
-                return {"reply": "No hay goals activos. Usa: /goal <objetivo>", "task_id": None}
-            lines = ["Goals activos:"]
-            for gid in active:
-                state = engine.get_state(gid)
-                if state:
-                    lines.append(f"  • {gid[:8]}… — iter {state.iterations}/{state.max_iterations} — {state.objective[:60]}")
-            return {"reply": "\n".join(lines), "task_id": None}
 
         # Log incoming message to session logger (local, redacted).
         # NOTE: self._config.ai is an AIConfig pydantic model, NOT a dict —
@@ -1002,6 +1058,15 @@ class IPCServer:
             method = request.method
             full_path = f"/{path}"
 
+            # Anti DNS-rebinding: reject any non-loopback Host header. Browser
+            # rebinding pages send the attacker hostname; loopback callers do not.
+            if not _ipc_auth.is_allowed_host(request.headers.get("host")):
+                self._metrics["auth_rejected"] += 1
+                log.warning("ipc.host_rejected", host=request.headers.get("host"))
+                return JSONResponse(
+                    status_code=403, content={"error": "forbidden", "reason": "bad_host"}
+                )
+
             # Phase 2: IPC auth gate (feature-flagged).
             try:
                 _ipc_auth.check_rest_request(
@@ -1094,6 +1159,7 @@ class IPCServer:
             self._ws_handler,
             getattr(self._config, "host", "127.0.0.1"),
             ws_port,
+            origins=list(_ipc_auth.ALLOWED_WS_ORIGINS),
         ):
             await asyncio.Future()
 

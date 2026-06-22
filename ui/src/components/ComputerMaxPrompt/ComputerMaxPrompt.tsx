@@ -7,7 +7,7 @@ export function ComputerMaxPrompt() {
   const { computerControlRequest, approveComputerControl, denyComputerControl } = useAgentStore();
 
   if (!computerControlRequest) return null;
-  const permissions = computerControlRequest.requestedPermissions.join(' + ');
+  const permissions = (computerControlRequest.requestedPermissions ?? []).join(' + ');
 
   return (
     <div className="computermax-prompt__backdrop" role="dialog" aria-modal="true" aria-labelledby="computermax-title">

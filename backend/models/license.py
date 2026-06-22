@@ -48,7 +48,7 @@ class Plan(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    licenses: Mapped[list["License"]] = relationship("License", back_populates="plan", lazy="noload")
+    licenses: Mapped[list[License]] = relationship("License", back_populates="plan", lazy="noload")
 
 
 class License(Base):
@@ -73,8 +73,8 @@ class License(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    plan: Mapped["Plan"] = relationship("Plan", back_populates="licenses", lazy="noload")
-    activations: Mapped[list["Activation"]] = relationship("Activation", back_populates="license", lazy="noload")
+    plan: Mapped[Plan] = relationship("Plan", back_populates="licenses", lazy="noload")
+    activations: Mapped[list[Activation]] = relationship("Activation", back_populates="license", lazy="noload")
 
 
 class Activation(Base):
@@ -91,4 +91,4 @@ class Activation(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
-    license: Mapped["License"] = relationship("License", back_populates="activations", lazy="noload")
+    license: Mapped[License] = relationship("License", back_populates="activations", lazy="noload")

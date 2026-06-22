@@ -1,0 +1,34 @@
+{
+  "version": "0.1.1",
+  "channel": "beta",
+  "features": {
+    "chat": true,
+    "diagnostics": true,
+    "feedback": true,
+    "sqlite_storage": true,
+    "screen_vision": true,
+    "mouse_control": false,
+    "keyboard_control": false,
+    "terminal_runner": false,
+    "file_actions": false,
+    "cloud_agent_pilot": false,
+    "telemetry": false,
+    "goal_engine": false,
+    "goal_engine_require_approval": true,
+    "autolearn": true
+  },
+  "ai_backends": [
+    { "type": "claude",        "name": "claude",    "model": "claude-sonnet-4-6" },
+    { "type": "openai_compat", "name": "lmstudio",  "url": "http://localhost:1234", "model": "" },
+    { "type": "openai_compat", "name": "llamacpp",  "url": "http://localhost:8080", "model": "" }
+  ],
+  "update": {
+    "min_version": "0.1.0",
+    "latest_version": "0.1.1",
+    "download_url": ""
+  },
+  "servermax": {
+    "heartbeat_interval_s": 30,
+    "lesson_upload_interval_s": 300
+  }
+}

@@ -72,7 +72,10 @@ export function inspectCommand(command: string, approved = false): ToolDecision 
 }
 
 export function decideTool(tool: BetaTool, input: Record<string, unknown> = {}, approved = false): ToolDecision {
-  if (tool.name === 'run_cmd' || tool.name === 'run_powershell') {
+  // cmd-category tools (CMD/PowerShell, read-only and write) carry a shell
+  // command string; inspect it so destructive commands are gated regardless of
+  // the tool's display name.
+  if (tool.category === 'cmd') {
     return inspectCommand(String(input.command || ''), approved);
   }
   if (tool.unavailableReason) {

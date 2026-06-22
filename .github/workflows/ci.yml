@@ -16,6 +16,10 @@ jobs:
           python-version: "3.11"
       - name: Install Python deps
         run: pip install -r requirements.txt
+      - name: Install lint tooling
+        run: pip install ruff
+      - name: Lint (ruff)
+        run: ruff check core/ backend/ tests/ sdk/ scripts/
       - name: Repository safety
         run: python scripts/check_repo_safety.py
       - name: Pytest

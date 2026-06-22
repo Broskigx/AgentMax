@@ -15,12 +15,12 @@ function TypingDots() {
     <div className="ct-typing">
       <div className="ct-typing-avatar" />
       <div className="ct-typing-dots">
-        {[0, 1, 2].map((index) => (
+        {[0, 1, 2].map((i) => (
           <motion.span
-            key={index}
+            key={i}
             className="ct-dot"
-            animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
-            transition={{ duration: 0.8, repeat: Infinity, delay: index * 0.15 }}
+            animate={{ y: [0, -6, 0], opacity: [0.35, 1, 0.35] }}
+            transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.16, ease: 'easeInOut' }}
           />
         ))}
       </div>
@@ -42,32 +42,36 @@ function TaskTimeline({ steps, status }: { steps: StepLog[]; status?: ChatMessag
       {steps.map((step, index) => {
         const isRunning = index === steps.length - 1 && status === 'executing';
         return (
-          <div key={`${step.stepNumber}-${step.timestamp}`} className="ct-timeline-row">
+          <motion.div
+            key={`${step.stepNumber}-${step.timestamp}`}
+            className="ct-timeline-row"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 26, delay: index * 0.05 }}
+          >
             <span className={`ct-tl-dot ${isRunning ? 'ct-tl-dot--pulse' : 'ct-tl-dot--done'}`} />
             <span className="ct-tl-num">{step.stepNumber}</span>
             <span className="ct-tl-desc">{step.description}</span>
-          </div>
+          </motion.div>
         );
       })}
       {status === 'completed' ? (
         <div className="ct-timeline-row ct-timeline-row--done">
-          <span className="ct-tl-check">OK</span>
+          <span className="ct-tl-check">✓</span>
           <span className="ct-tl-desc ct-tl-desc--done">Tarea completada</span>
         </div>
       ) : null}
       {status === 'failed' ? (
         <div className="ct-timeline-row ct-timeline-row--failed">
-          <span className="ct-tl-x">X</span>
-          <span className="ct-tl-desc ct-tl-desc--failed">La tarea fallo</span>
+          <span className="ct-tl-x">✕</span>
+          <span className="ct-tl-desc ct-tl-desc--failed">La tarea falló</span>
         </div>
       ) : null}
     </div>
   );
 }
 
-/** Split text on /command tokens and wrap them in a styled span. */
 function renderWithSlashTokens(text: string) {
-  // Match /word — only at word boundary so URLs like https://... are not touched
   const parts = text.split(/((?:^|\s)(\/[a-z]\w*))/gi);
   return parts.map((part, i) => {
     const trimmed = part.trimStart();
@@ -83,21 +87,22 @@ function renderWithSlashTokens(text: string) {
   });
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, index }: { message: ChatMessage; index: number }) {
   const isUser = message.role === 'user';
   const isGoalCmd = isUser && /^\s*\/goal\b/i.test(message.content ?? '');
 
   return (
     <motion.div
       className={`ct-row ${isUser ? 'ct-row--user' : 'ct-row--agent'}`}
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+      initial={{ opacity: 0, y: 16, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 340, damping: 28, delay: Math.min(index * 0.02, 0.1) }}
     >
       {!isUser ? <div className="ct-avatar" /> : null}
 
       <div className={`ct-bubble ${isUser ? 'ct-bubble--user' : 'ct-bubble--agent'}`}>
         {isGoalCmd ? <span className="ct-goal-badge">Goal Mode</span> : null}
+
         {!isUser && !message.content && (message.status === 'sending' || message.status === 'streaming') ? (
           <TypingDots />
         ) : (
@@ -121,6 +126,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         {!isUser && message.taskId ? (
           <TaskTimeline steps={message.taskSteps ?? []} status={message.taskStatus} />
         ) : null}
+
         <span className="ct-bubble-time">
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
@@ -130,11 +136,20 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 }
 
 const SUGGESTIONS = [
-  'Mueve el mouse a x=500, y=300',
-  'Captura pantalla',
-  'Que puedes hacer por mi?',
-  'Ayudame con una tarea en mi PC',
+  { text: 'Captura pantalla', icon: '⬚' },
+  { text: '¿Qué puedes hacer por mí?', icon: '✦' },
+  { text: 'Mueve el mouse a x=500, y=300', icon: '⊹' },
+  { text: 'Ayúdame con una tarea en mi PC', icon: '◈' },
 ];
+
+const suggestionContainer = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.15 } },
+};
+const suggestionItem = {
+  hidden: { opacity: 0, y: 14, scale: 0.96 },
+  show:   { opacity: 1, y: 0,  scale: 1, transition: { type: 'spring', stiffness: 300, damping: 24 } },
+};
 
 function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
   let profileName = '';
@@ -147,20 +162,33 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
   return (
     <div className="ct-empty">
       <AgentMaxLogo size="lg" animated />
-      <p className="ct-empty-title">{profileName ? `Hola, ${profileName}` : 'En que puedo ayudarte?'}</p>
-      <p className="ct-empty-sub">Conversa, adjunta una captura o activa ComputerMax para actuar con permiso.</p>
-      <div className="ct-suggestions">
-        {SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion}
+      <p className="ct-empty-title">
+        {profileName ? `Hola, ${profileName}` : '¿En qué puedo ayudarte?'}
+      </p>
+      <p className="ct-empty-sub">
+        Conversa, adjunta una captura o activa ComputerMax para actuar con permiso.
+      </p>
+      <motion.div
+        className="ct-suggestions"
+        variants={suggestionContainer}
+        initial="hidden"
+        animate="show"
+      >
+        {SUGGESTIONS.map(({ text, icon }) => (
+          <motion.button
+            key={text}
             type="button"
             className="ct-suggestion"
-            onClick={() => onSuggest(suggestion)}
+            variants={suggestionItem}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => onSuggest(text)}
           >
-            {suggestion}
-          </button>
+            <span style={{ marginRight: 6, opacity: 0.5, fontSize: 13 }}>{icon}</span>
+            {text}
+          </motion.button>
         ))}
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -182,7 +210,7 @@ export function ChatThread() {
       mode === 'think'
         ? `Analiza en profundidad y valida tus supuestos: ${text || 'describe la imagen adjunta'}`
         : mode === 'computer'
-          ? `Usa ComputerMax con permiso explicito para: ${text || 'analizar y actuar sobre la imagen adjunta'}`
+          ? `Usa ComputerMax con permiso explícito para: ${text || 'analizar y actuar sobre la imagen adjunta'}`
           : text;
     void sendMessage(message, attachments);
   };
@@ -199,17 +227,18 @@ export function ChatThread() {
           />
         ) : (
           <AnimatePresence initial={false}>
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+            {messages.map((message, index) => (
+              <MessageBubble key={message.id} message={message} index={index} />
             ))}
           </AnimatePresence>
         )}
 
         {isTyping && messages[messages.length - 1]?.role === 'user' ? (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 26 }}
           >
             <TypingDots />
           </motion.div>

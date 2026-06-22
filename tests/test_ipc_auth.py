@@ -57,6 +57,34 @@ def test_auth_flag_uses_secure_config_default(monkeypatch):
     assert ipc_auth.is_auth_enabled(config) is False
 
 
+@pytest.mark.parametrize(
+    "host,allowed",
+    [
+        ("127.0.0.1:7790", True),
+        ("localhost:7788", True),
+        ("127.0.0.1", True),
+        ("[::1]:7790", True),
+        ("::1", True),
+        (None, True),  # missing Host: native client
+        ("", True),
+        ("evil.com", False),
+        ("evil.com:7790", False),
+        ("attacker.example:7790", False),
+        ("169.254.169.254", False),
+    ],
+)
+def test_is_allowed_host_blocks_non_loopback(host, allowed):
+    assert ipc_auth.is_allowed_host(host) is allowed
+
+
+def test_ws_origins_allow_native_and_app_not_browser_pages():
+    # Native (no Origin) and the Tauri/dev origins are allowed; an arbitrary
+    # browser origin is not in the allowlist.
+    assert None in ipc_auth.ALLOWED_WS_ORIGINS
+    assert "tauri://localhost" in ipc_auth.ALLOWED_WS_ORIGINS
+    assert "http://evil.com" not in ipc_auth.ALLOWED_WS_ORIGINS
+
+
 class FakeWebSocket:
     def __init__(self, message: dict):
         self.message = json.dumps(message)

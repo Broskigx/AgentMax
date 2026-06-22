@@ -67,6 +67,7 @@ async def heartbeat(
             request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
             or (request.client.host if request.client else None)
         ),
+        token_jti=token.get("jti", ""),
     )
     return HeartbeatResponse(**result)
 

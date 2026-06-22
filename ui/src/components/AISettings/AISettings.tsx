@@ -36,8 +36,13 @@ export function AISettings({ visible, onClose }: AISettingsProps) {
   const handleSwitch = async (backend: 'claude' | 'lmstudio' | 'local_peft' | 'llamacpp' | 'AgentMax' | 'mock') => {
     if (aiStatus?.backend === backend) return;
     setSwitching(true);
-    await switchBackend(backend);
-    setSwitching(false);
+    try {
+      await switchBackend(backend);
+    } catch (err) {
+      console.error('switchBackend failed:', err);
+    } finally {
+      setSwitching(false);
+    }
   };
 
   const current = aiStatus?.backend ?? 'AgentMax';
