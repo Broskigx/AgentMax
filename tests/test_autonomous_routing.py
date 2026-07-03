@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer

@@ -1,4 +1,4 @@
-﻿"""Visible response shaping for AgentMax."""
+"""Visible response shaping for AgentMax."""
 
 from __future__ import annotations
 

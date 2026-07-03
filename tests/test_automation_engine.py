@@ -109,9 +109,7 @@ class TestExecuteWorkflow:
     @pytest.mark.asyncio
     async def test_input_data_available_as_variables(self):
         eng = AutomationEngine()
-        eng.register_automation(
-            _make_automation(message="hi {{name}} / {{trigger.name}}")
-        )
+        eng.register_automation(_make_automation(message="hi {{name}} / {{trigger.name}}"))
         result = await eng.execute_workflow("wf1", {"name": "world"})
         assert result.step_results[0]["result"]["message"] == "hi world / world"
 

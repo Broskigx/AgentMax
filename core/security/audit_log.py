@@ -1,4 +1,4 @@
-﻿"""Audit log -- append-only JSONL with HMAC-SHA256 integrity signing per entry."""
+"""Audit log -- append-only JSONL with HMAC-SHA256 integrity signing per entry."""
 
 from __future__ import annotations
 

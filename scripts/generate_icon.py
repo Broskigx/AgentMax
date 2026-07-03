@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Generate assets/icon.ico for AgentMax from scratch using Pillow."""
 
 from __future__ import annotations

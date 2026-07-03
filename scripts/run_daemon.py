@@ -1,4 +1,4 @@
-﻿"""Headless launcher — boots AgentMaxRuntime and blocks on wait_for_shutdown.
+"""Headless launcher — boots AgentMaxRuntime and blocks on wait_for_shutdown.
 
 No REPL, no stdin reads. Used by background processes / tests where we just
 want the runtime up so the IPC endpoints are reachable.

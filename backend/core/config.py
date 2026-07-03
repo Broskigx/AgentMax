@@ -1,4 +1,4 @@
-﻿"""Central configuration -- all settings from environment variables."""
+"""Central configuration -- all settings from environment variables."""
 
 from __future__ import annotations
 

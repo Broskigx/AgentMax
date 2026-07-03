@@ -1,4 +1,4 @@
-﻿"""
+"""
 LocalPEFTClient — in-process backend for AgentMax (PEFT/LoRA adapter).
 
 Carga el modelo base (``unsloth/Qwen3-VL-8B-Thinking``) y aplica el adapter

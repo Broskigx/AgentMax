@@ -1,4 +1,4 @@
-﻿"""
+"""
 Signed auto-update manager.
 
 Update manifest format (served from /v1/updates/latest)

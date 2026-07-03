@@ -1,4 +1,4 @@
-﻿"""
+"""
 Air-Gap Mode -- "Privacy Shield" for enterprise deployments.
 
 When enabled:

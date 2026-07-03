@@ -1,8 +1,9 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 CryptoDB — SQLite cifrada con AES-256-GCM + HMAC-SHA256 por registro.
 Requiere: pip install cryptography
 """
+
 import hashlib
 import hmac
 import json
@@ -15,6 +16,7 @@ try:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
     _CRYPTO_OK = True
 except ImportError:
     _CRYPTO_OK = False
@@ -45,7 +47,7 @@ class CryptoDB:
                 f.write(salt)
 
         if _CRYPTO_OK:
-            self._key      = _derive_key(password.encode(), salt)
+            self._key = _derive_key(password.encode(), salt)
             self._hmac_key = _derive_key((password + "_hmac").encode(), salt)
         else:
             self._key = self._hmac_key = None
@@ -97,8 +99,7 @@ class CryptoDB:
 
         row = self.conn.execute("SELECT version FROM schema_info LIMIT 1").fetchone()
         if not row:
-            self.conn.execute("INSERT INTO schema_info VALUES (?,?)",
-                              (SCHEMA_VERSION, time.time()))
+            self.conn.execute("INSERT INTO schema_info VALUES (?,?)", (SCHEMA_VERSION, time.time()))
             self.conn.commit()
 
     # ── Cifrado / Descifrado ──────────────────────────────────────────────────
@@ -130,7 +131,7 @@ class CryptoDB:
     def create_session(self, session_id: str, device_id: str = "") -> str:
         self.conn.execute(
             "INSERT OR IGNORE INTO chat_sessions (id, device_id, created_at) VALUES (?,?,?)",
-            (session_id, device_id, time.time())
+            (session_id, device_id, time.time()),
         )
         self.conn.commit()
         return session_id
@@ -141,12 +142,13 @@ class CryptoDB:
         signature = self._sign(payload)
         cur = self.conn.execute(
             "INSERT INTO chat_messages (session_id, encrypted, signature, created_at) VALUES (?,?,?,?)",
-            (session_id, encrypted, signature, time.time())
+            (session_id, encrypted, signature, time.time()),
         )
         self.conn.commit()
         # Update session updated_at
-        self.conn.execute("UPDATE chat_sessions SET updated_at=? WHERE id=?",
-                          (time.time(), session_id))
+        self.conn.execute(
+            "UPDATE chat_sessions SET updated_at=? WHERE id=?", (time.time(), session_id)
+        )
         self.conn.commit()
         return cur.lastrowid
 
@@ -154,7 +156,7 @@ class CryptoDB:
         rows = self.conn.execute(
             "SELECT id, encrypted, signature FROM chat_messages "
             "WHERE session_id=? ORDER BY created_at DESC LIMIT ?",
-            (session_id, limit)
+            (session_id, limit),
         ).fetchall()
         messages = []
         for row in reversed(rows):
@@ -182,7 +184,7 @@ class CryptoDB:
         signature = self._sign(payload)
         cur = self.conn.execute(
             "INSERT INTO bugs (bug_type, severity, encrypted, signature, created_at) VALUES (?,?,?,?,?)",
-            (bug_type, severity, encrypted, signature, time.time())
+            (bug_type, severity, encrypted, signature, time.time()),
         )
         self.conn.commit()
         return cur.lastrowid
@@ -222,7 +224,7 @@ class CryptoDB:
         encrypted = self._encrypt(payload)
         self.conn.execute(
             "INSERT OR REPLACE INTO preferences (key, encrypted_value, confidence, updated_at) VALUES (?,?,?,?)",
-            (key, encrypted, confidence, time.time())
+            (key, encrypted, confidence, time.time()),
         )
         self.conn.commit()
 
@@ -244,12 +246,12 @@ class CryptoDB:
         bug_count = self.bug_count()
         bug_total = self.conn.execute("SELECT COUNT(*) FROM bugs").fetchone()[0]
         return {
-            "sessions":   session_count,
-            "messages":   msg_count,
-            "bugs_open":  bug_count,
+            "sessions": session_count,
+            "messages": msg_count,
+            "bugs_open": bug_count,
             "bugs_total": bug_total,
-            "db_path":    self.db_path,
-            "encrypted":  _CRYPTO_OK,
+            "db_path": self.db_path,
+            "encrypted": _CRYPTO_OK,
         }
 
     def close(self):
@@ -258,6 +260,7 @@ class CryptoDB:
 
 # ── Singleton helpers ─────────────────────────────────────────────────────────
 _db: Optional["CryptoDB"] = None
+
 
 def get_db(db_path: str = "data/AgentMax.db", password: str = "AgentMax_default") -> "CryptoDB":
     global _db
@@ -268,11 +271,14 @@ def get_db(db_path: str = "data/AgentMax.db", password: str = "AgentMax_default"
 
 if __name__ == "__main__":
     import uuid
+
     db = get_db("data/test.db", "test_password_123")
     sid = db.create_session(str(uuid.uuid4()))
     db.save_message(sid, "user", "Hola AgentMax!")
     db.save_message(sid, "assistant", "Hola! En que puedo ayudarte?")
-    db.save_bug("training_error", {"stage": "dataloader", "error": "OOM", "vram": 8.2}, severity="high")
+    db.save_bug(
+        "training_error", {"stage": "dataloader", "error": "OOM", "vram": 8.2}, severity="high"
+    )
 
     print("Stats:", json.dumps(db.stats(), indent=2))
     print("Messages:", db.load_messages(sid))

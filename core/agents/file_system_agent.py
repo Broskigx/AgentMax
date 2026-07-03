@@ -1,4 +1,4 @@
-﻿"""
+"""
 FileSystemAgent -- sandboxed file and directory manipulation.
 
 Security: all paths are resolved and validated against an allowlist of safe

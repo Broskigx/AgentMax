@@ -1,4 +1,4 @@
-﻿"""AgentMax Plugin SDK -- base class for third-party plugins."""
+"""AgentMax Plugin SDK -- base class for third-party plugins."""
 
 from __future__ import annotations
 

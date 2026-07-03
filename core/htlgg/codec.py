@@ -21,12 +21,8 @@ _ELEMENT_RE = re.compile(
     r'^E:([^#]+)#([^@]+)@(-?\d+),(-?\d+),(\d+),(\d+):("(?:\\.|[^"])*")'
     r"\|cf=(\d{1,3})\|src=([A-Za-z0-9_-]+)$"
 )
-_DECISION_RE = re.compile(
-    r'^D:([^#]+)#([^=]*)=>("(?:\\.|[^"])*")\|(R[0-3])\|cfm=([01])$'
-)
-_EXEC_RE = re.compile(
-    r'^X:([^@]+)@(-?\d*),(-?\d*)\|(Y[0-5])\|("(?:\\.|[^"])*")$'
-)
+_DECISION_RE = re.compile(r'^D:([^#]+)#([^=]*)=>("(?:\\.|[^"])*")\|(R[0-3])\|cfm=([01])$')
+_EXEC_RE = re.compile(r'^X:([^@]+)@(-?\d*),(-?\d*)\|(Y[0-5])\|("(?:\\.|[^"])*")$')
 
 
 def _quoted(value: str) -> str:
@@ -56,10 +52,7 @@ def encode_record(record: HtlggRecord) -> str:
     if isinstance(record, ExecutionRecord):
         x = "" if record.x is None else str(int(record.x))
         y = "" if record.y is None else str(int(record.y))
-        return (
-            f"X:{record.action}@{x},{y}|{record.outcome.value}|"
-            f"{_quoted(record.detail)}"
-        )
+        return f"X:{record.action}@{x},{y}|{record.outcome.value}|{_quoted(record.detail)}"
     if isinstance(record, ControlRecord):
         if record.token is ControlToken.ERROR:
             if record.code is None:

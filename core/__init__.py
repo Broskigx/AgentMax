@@ -1,1 +1,1 @@
-﻿"""AgentMax core package."""
+"""AgentMax core package."""

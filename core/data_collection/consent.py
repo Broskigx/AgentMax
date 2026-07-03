@@ -1,4 +1,4 @@
-﻿"""Opt-in consent gate for AgentMax beta data collection.
+"""Opt-in consent gate for AgentMax beta data collection.
 
 Collection is **OFF by default**. Logs are only recorded/uploaded when the tester
 has *explicitly* opted in, and even then only the **redacted** task logs are kept

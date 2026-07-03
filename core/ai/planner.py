@@ -1,4 +1,4 @@
-﻿"""Internal action and tool planning for AgentMax."""
+"""Internal action and tool planning for AgentMax."""
 
 from __future__ import annotations
 

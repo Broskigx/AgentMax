@@ -1,4 +1,4 @@
-﻿"""
+"""
 Cryptographic primitives for the AgentMax backend.
 
 Key responsibilities

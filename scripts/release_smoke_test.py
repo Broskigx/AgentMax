@@ -69,9 +69,7 @@ def main() -> int:
                 )
                 token_path = local_app_data / "AgentMax" / "ipc_token"
                 AUTH_TOKEN = (
-                    token_path.read_text(encoding="utf-8").strip()
-                    if token_path.exists()
-                    else None
+                    token_path.read_text(encoding="utf-8").strip() if token_path.exists() else None
                 )
             checks["ipc_token_available"] = bool(AUTH_TOKEN)
 
@@ -136,7 +134,9 @@ def main() -> int:
     checks["health_blob_no_agust"] = HARDCODED_USER_RE.search(health_blob) is None
 
     ok = all(checks.values())
-    print(json.dumps({"ok": ok, "checks": checks, "details": details}, ensure_ascii=False, indent=2))
+    print(
+        json.dumps({"ok": ok, "checks": checks, "details": details}, ensure_ascii=False, indent=2)
+    )
     return 0 if ok else 1
 
 

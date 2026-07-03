@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Memory System -- persistent memory with vector storage and semantic search.
 """
 

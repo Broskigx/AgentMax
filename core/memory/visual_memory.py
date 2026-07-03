@@ -1,4 +1,4 @@
-﻿"""Lightweight visual memory.
+"""Lightweight visual memory.
 
 This module intentionally avoids OpenCV, Chroma, numpy, OCR engines, and local
 ML runtimes. Screen understanding lives in the Rust/Tauri side; Python keeps only
@@ -151,9 +151,7 @@ class VisualMemory:
             filepath: Path | None = None
             perceptual_hash = self._image_hash(img) if img is not None else ""
             if self._store_images and img is not None:
-                filename = (
-                    f"{self._normalize(app_name)}__{self._normalize(label)}__{tid}.png"
-                )
+                filename = f"{self._normalize(app_name)}__{self._normalize(label)}__{tid}.png"
                 filepath = self._tmpl_dir / filename
                 img.save(filepath, format="PNG")
 
@@ -454,11 +452,7 @@ class VisualMemory:
 
         # Return bounds from the first matching index entry
         try:
-            index_path = (
-                self._index_path
-                if self._index_path.exists()
-                else self._legacy_index_path
-            )
+            index_path = self._index_path if self._index_path.exists() else self._legacy_index_path
             if index_path.exists():
                 for line in index_path.read_text(encoding="utf-8").splitlines():
                     try:

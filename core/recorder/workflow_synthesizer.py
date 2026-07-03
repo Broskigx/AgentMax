@@ -1,4 +1,4 @@
-﻿"""
+"""
 Workflow Synthesizer -- converts a raw recording into a semantic, robust TaskPlan.
 
 The key insight: we don't replay pixel coordinates.  Instead we send the

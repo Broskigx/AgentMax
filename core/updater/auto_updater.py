@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Auto-Update System
 
 Delta updates system that only downloads changed files,

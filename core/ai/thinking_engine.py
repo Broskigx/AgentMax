@@ -1,4 +1,4 @@
-﻿"""AgentMax Thinking Core: private structured reasoning pipeline."""
+"""AgentMax Thinking Core: private structured reasoning pipeline."""
 
 from __future__ import annotations
 

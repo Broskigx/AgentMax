@@ -1,4 +1,4 @@
-﻿"""AgentMax security subpackage. Public API surface."""
+"""AgentMax security subpackage. Public API surface."""
 
 from __future__ import annotations
 

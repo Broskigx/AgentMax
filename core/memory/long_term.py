@@ -1,4 +1,4 @@
-﻿"""Long-term memory -- JSON file persistence with optional ChromaDB vector store."""
+"""Long-term memory -- JSON file persistence with optional ChromaDB vector store."""
 
 from __future__ import annotations
 

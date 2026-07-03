@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Bot - Custom AI Assistant
 
 The proprietary AI model trained by AgentMax that becomes

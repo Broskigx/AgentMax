@@ -1,4 +1,4 @@
-﻿"""Base agent -- shared contract for all AgentMax agents."""
+"""Base agent -- shared contract for all AgentMax agents."""
 
 from __future__ import annotations
 

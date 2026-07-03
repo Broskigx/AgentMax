@@ -1,4 +1,4 @@
-﻿"""Command line interface for AgentMax tools diagnostics."""
+"""Command line interface for AgentMax tools diagnostics."""
 
 from __future__ import annotations
 

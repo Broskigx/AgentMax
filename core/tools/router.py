@@ -115,7 +115,9 @@ class ToolRouter:
             payload["target"] = step.get("target") or step.get("description") or step.get("command")
             if "app" in step:
                 # Convert old app name to visual description (AI should have screenshot context)
-                payload["description"] = f"visually locate and interact with {step['app']} using mouse"
+                payload["description"] = (
+                    f"visually locate and interact with {step['app']} using mouse"
+                )
         elif tool_id in ("app.close", "ui.close_window"):
             payload["target"] = step.get("target") or step.get("description") or step.get("process")
             if "app" in step:

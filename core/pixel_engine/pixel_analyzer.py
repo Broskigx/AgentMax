@@ -1,4 +1,4 @@
-﻿"""
+"""
 Pixel analysis engine — screen capture, diff, OCR, and smart encoding.
 
 Provides the vision backbone for AgentMax:

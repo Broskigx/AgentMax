@@ -1,4 +1,4 @@
-﻿"""
+"""
 /v1 runtime discovery endpoints for the AgentMax desktop beta.
 
 These routes are intentionally small and non-sensitive. They let the desktop UI

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 DataCollector — recopila ejemplos para re-entrenar AgentMax.
 
@@ -23,6 +23,7 @@ Privacidad:
   - Por defecto NO se guardan hostnames, usernames, IPs reales ni rutas absolutas
   - User puede deshabilitar todo con AgentMax_NO_TELEMETRY=1
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -38,6 +39,7 @@ from typing import Any
 # Crypto DB optional
 try:
     from crypto_db import CryptoDB, get_db
+
     _DB_AVAILABLE = True
 except ImportError:
     _DB_AVAILABLE = False
@@ -48,6 +50,7 @@ DEDUP_PATH = os.path.join(FALLBACK_DIR, ".dedup_index.json")
 
 
 # ─── Consent / config ──────────────────────────────────────────────────────
+
 
 @dataclass
 class CollectionConsent:
@@ -62,14 +65,15 @@ class CollectionConsent:
         workflows=True,         # save multi-step patterns (anonymized)
       )
     """
+
     # Always-on (no PII, just structural):
-    training_errors: bool = True       # config + exception type, no content
-    oom_errors: bool = True            # batch/seq/vram only
+    training_errors: bool = True  # config + exception type, no content
+    oom_errors: bool = True  # batch/seq/vram only
 
     # Opt-in for content:
-    tool_outcomes: bool = False         # tool name + args (PII-scrubbed)
-    corrections: bool = False           # user → model → corrected (PII-scrubbed)
-    workflows: bool = False             # tool-call sequences (no content)
+    tool_outcomes: bool = False  # tool name + args (PII-scrubbed)
+    corrections: bool = False  # user → model → corrected (PII-scrubbed)
+    workflows: bool = False  # tool-call sequences (no content)
 
     # Global kill-switch
     enabled: bool = True
@@ -79,9 +83,9 @@ class CollectionConsent:
         if os.environ.get("AgentMax_NO_TELEMETRY", "").strip() in ("1", "true", "yes"):
             return cls(enabled=False, training_errors=False, oom_errors=False)
         c = cls()
-        c.tool_outcomes  = os.environ.get("AgentMax_COLLECT_TOOLS", "0") == "1"
-        c.corrections    = os.environ.get("AgentMax_COLLECT_CORRECTIONS", "0") == "1"
-        c.workflows      = os.environ.get("AgentMax_COLLECT_WORKFLOWS", "0") == "1"
+        c.tool_outcomes = os.environ.get("AgentMax_COLLECT_TOOLS", "0") == "1"
+        c.corrections = os.environ.get("AgentMax_COLLECT_CORRECTIONS", "0") == "1"
+        c.workflows = os.environ.get("AgentMax_COLLECT_WORKFLOWS", "0") == "1"
         return c
 
 
@@ -92,9 +96,7 @@ _RE_EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
 _RE_IP_V4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _RE_IP_V6 = re.compile(r"\b(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{0,4}\b")
 # Phone: requires + prefix (international) OR () prefix, then 2+ groups separated by space/dash
-_RE_PHONE = re.compile(
-    r"(?:\+\d{1,3}|\(\d{2,4}\))[\s-]?\d{1,5}(?:[\s-]\d{1,5}){1,5}\b"
-)
+_RE_PHONE = re.compile(r"(?:\+\d{1,3}|\(\d{2,4}\))[\s-]?\d{1,5}(?:[\s-]\d{1,5}){1,5}\b")
 # Credit card: exactly 13-19 consecutive digits, no dots (otherwise it'd catch IPs)
 _RE_CC = re.compile(r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{1,7}\b")
 _RE_WIN_PATH = re.compile(r"[A-Za-z]:\\Users\\[^\\\s]+", re.IGNORECASE)
@@ -104,13 +106,22 @@ _RE_API_KEY = re.compile(
 )
 _RE_BEARER = re.compile(r"\b(?:eyJ|sk-|hf_|ghp_|gho_|ghs_|gho_|xoxb-|xoxp-)[A-Za-z0-9_\-]{16,}\b")
 _RE_URL_QUERY = re.compile(r"(https?://[^/\s?]+)/[^\s?]*\?[^\s]*")
-_RE_HOSTNAME = re.compile(r"\b(?:[a-z0-9-]+\.){1,3}(?:com|net|org|io|ai|dev|app|local|lan)\b", re.IGNORECASE)
+_RE_HOSTNAME = re.compile(
+    r"\b(?:[a-z0-9-]+\.){1,3}(?:com|net|org|io|ai|dev|app|local|lan)\b", re.IGNORECASE
+)
 
 # Whitelisted hostnames (don't scrub — they're our infra / public)
 _HOST_WHITELIST = {
-    "huggingface.co", "github.com", "pypi.org", "python.org",
-    "runpod.io", "lmstudio.ai", "openai.com", "anthropic.com",
-    "qwen.ai", "unsloth.ai",
+    "huggingface.co",
+    "github.com",
+    "pypi.org",
+    "python.org",
+    "runpod.io",
+    "lmstudio.ai",
+    "openai.com",
+    "anthropic.com",
+    "qwen.ai",
+    "unsloth.ai",
 }
 
 # Common username placeholder
@@ -139,6 +150,7 @@ def scrub_pii(text: str, aggressive: bool = False) -> str:
         if ip.startswith(("127.", "10.", "192.168.", "172.")):
             return "<lan_ip>"
         return "<ip>"
+
     s = _RE_IP_V4.sub(_ip_replace, s)
 
     # CC before phone (CC requires 4+4+4+N format, very specific)
@@ -154,11 +166,13 @@ def scrub_pii(text: str, aggressive: bool = False) -> str:
 
     # Aggressive: hostname scrubbing
     if aggressive:
+
         def _host_replace(m: re.Match) -> str:
             host = m.group(0).lower()
             if any(w in host for w in _HOST_WHITELIST):
                 return host
             return "<host>"
+
         s = _RE_HOSTNAME.sub(_host_replace, s)
 
     return s
@@ -181,15 +195,21 @@ def anonymize_dict(d: dict, aggressive: bool = False) -> dict:
         elif isinstance(v, dict):
             out[k] = anonymize_dict(v, aggressive)
         elif isinstance(v, list):
-            out[k] = [scrub_pii(x, aggressive) if isinstance(x, str)
-                      else anonymize_dict(x, aggressive) if isinstance(x, dict)
-                      else x for x in v]
+            out[k] = [
+                scrub_pii(x, aggressive)
+                if isinstance(x, str)
+                else anonymize_dict(x, aggressive)
+                if isinstance(x, dict)
+                else x
+                for x in v
+            ]
         else:
             out[k] = v
     return out
 
 
 # ─── Deduplication ─────────────────────────────────────────────────────────
+
 
 class DedupIndex:
     """In-memory + on-disk dedup of (category, content_hash) → occurrence count."""
@@ -235,13 +255,16 @@ class DedupIndex:
         entry["last"] = time.time()
         # Keep size bounded by dropping oldest
         if len(self._index) > self.max_entries:
-            oldest = sorted(self._index.items(), key=lambda kv: kv[1].get("last", 0))[:self.max_entries // 10]
+            oldest = sorted(self._index.items(), key=lambda kv: kv[1].get("last", 0))[
+                : self.max_entries // 10
+            ]
             for k, _ in oldest:
                 self._index.pop(k, None)
         return entry["count"]
 
 
 # ─── DataCollector ─────────────────────────────────────────────────────────
+
 
 class DataCollector:
     """
@@ -267,18 +290,18 @@ class DataCollector:
     """
 
     # Public categories
-    CAT_TOOL_OK     = "tool_call_success"
-    CAT_TOOL_FAIL   = "tool_call_failure"
-    CAT_CORRECTION  = "correction"
-    CAT_TRAIN_ERR   = "training_error"
-    CAT_OOM         = "oom_error"
-    CAT_WORKFLOW    = "workflow_pattern"
+    CAT_TOOL_OK = "tool_call_success"
+    CAT_TOOL_FAIL = "tool_call_failure"
+    CAT_CORRECTION = "correction"
+    CAT_TRAIN_ERR = "training_error"
+    CAT_OOM = "oom_error"
+    CAT_WORKFLOW = "workflow_pattern"
 
     # Limits (chars)
-    MAX_USER_MSG   = 1000
-    MAX_MODEL_MSG  = 2000
-    MAX_TRACEBACK  = 2000
-    MIN_CONTENT    = 8
+    MAX_USER_MSG = 1000
+    MAX_MODEL_MSG = 2000
+    MAX_TRACEBACK = 2000
+    MIN_CONTENT = 8
 
     # Dedup: same item is recorded at most this many times
     MAX_OCCURRENCES = 5
@@ -332,7 +355,7 @@ class DataCollector:
 
         # Anonymize args + output + error
         clean_args = anonymize_dict(args, self.aggressive)
-        clean_output = scrub_pii(output[:self.MAX_MODEL_MSG], self.aggressive)
+        clean_output = scrub_pii(output[: self.MAX_MODEL_MSG], self.aggressive)
         clean_error = scrub_pii(error[:500], self.aggressive)
 
         # PII residual check
@@ -343,14 +366,19 @@ class DataCollector:
 
         category = self.CAT_TOOL_OK if success else self.CAT_TOOL_FAIL
         normalized = f"{tool}::{sorted(args.keys())}"
-        return self._save(category, {
-            "tool": tool,
-            "args": clean_args,
-            "success": success,
-            "output": clean_output if clean_output else None,
-            "error": clean_error if clean_error else None,
-            "latency_ms": round(latency_ms, 2),
-        }, normalized=normalized, severity="info")
+        return self._save(
+            category,
+            {
+                "tool": tool,
+                "args": clean_args,
+                "success": success,
+                "output": clean_output if clean_output else None,
+                "error": clean_error if clean_error else None,
+                "latency_ms": round(latency_ms, 2),
+            },
+            normalized=normalized,
+            severity="info",
+        )
 
     def capture_correction(
         self,
@@ -365,14 +393,16 @@ class DataCollector:
             return None
 
         # Length / quality filter
-        if (len(user_input.strip()) < self.MIN_CONTENT
-                or len(corrected_output.strip()) < self.MIN_CONTENT):
+        if (
+            len(user_input.strip()) < self.MIN_CONTENT
+            or len(corrected_output.strip()) < self.MIN_CONTENT
+        ):
             self._session_stats["dropped_quality"] += 1
             return None
 
-        clean_user = scrub_pii(user_input[:self.MAX_USER_MSG], self.aggressive)
-        clean_bad = scrub_pii(model_output[:self.MAX_MODEL_MSG], self.aggressive)
-        clean_good = scrub_pii(corrected_output[:self.MAX_MODEL_MSG], self.aggressive)
+        clean_user = scrub_pii(user_input[: self.MAX_USER_MSG], self.aggressive)
+        clean_bad = scrub_pii(model_output[: self.MAX_MODEL_MSG], self.aggressive)
+        clean_good = scrub_pii(corrected_output[: self.MAX_MODEL_MSG], self.aggressive)
 
         if has_residual_pii(clean_user + clean_bad + clean_good):
             self._session_stats["dropped_pii"] += 1
@@ -384,12 +414,17 @@ class DataCollector:
             clean_ctx = [anonymize_dict(m, self.aggressive) for m in context_messages[-4:]]
 
         normalized = clean_user[:100] + "::" + clean_good[:100]
-        return self._save(self.CAT_CORRECTION, {
-            "input": clean_user,
-            "bad_output": clean_bad,
-            "correction": clean_good,
-            "context": clean_ctx,
-        }, normalized=normalized, severity="high")
+        return self._save(
+            self.CAT_CORRECTION,
+            {
+                "input": clean_user,
+                "bad_output": clean_bad,
+                "correction": clean_good,
+                "context": clean_ctx,
+            },
+            normalized=normalized,
+            severity="high",
+        )
 
     def capture_workflow(
         self,
@@ -407,12 +442,17 @@ class DataCollector:
             return None
 
         normalized = "→".join(tool_sequence)
-        return self._save(self.CAT_WORKFLOW, {
-            "tools": tool_sequence,
-            "length": len(tool_sequence),
-            "success": success,
-            "duration_ms": round(duration_ms, 2),
-        }, normalized=normalized, severity="info")
+        return self._save(
+            self.CAT_WORKFLOW,
+            {
+                "tools": tool_sequence,
+                "length": len(tool_sequence),
+                "success": success,
+                "duration_ms": round(duration_ms, 2),
+            },
+            normalized=normalized,
+            severity="info",
+        )
 
     def capture_training_error(
         self,
@@ -429,36 +469,42 @@ class DataCollector:
         vram_info: dict[str, float] = {}
         try:
             import torch
+
             if torch.cuda.is_available():
                 vram_info = {
                     "vram_allocated_gb": round(torch.cuda.memory_allocated() / 1e9, 2),
-                    "vram_reserved_gb":  round(torch.cuda.memory_reserved() / 1e9, 2),
-                    "vram_peak_gb":      round(torch.cuda.max_memory_allocated() / 1e9, 2),
+                    "vram_reserved_gb": round(torch.cuda.memory_reserved() / 1e9, 2),
+                    "vram_peak_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2),
                 }
         except Exception:
             pass
 
         # Scrub traceback (may contain user paths)
-        tb = scrub_pii(traceback.format_exc()[:self.MAX_TRACEBACK], aggressive=True)
+        tb = scrub_pii(traceback.format_exc()[: self.MAX_TRACEBACK], aggressive=True)
         msg = scrub_pii(str(exception)[:500], aggressive=True)
 
         safe_config = {
-            k: v for k, v in config.items()
-            if isinstance(v, (str, int, float, bool)) and not any(
-                s in k.lower() for s in ("key", "token", "secret", "password", "path")
-            )
+            k: v
+            for k, v in config.items()
+            if isinstance(v, (str, int, float, bool))
+            and not any(s in k.lower() for s in ("key", "token", "secret", "password", "path"))
         }
 
         normalized = f"{type(exception).__name__}::{stage}"
         severity = "critical" if "out of memory" in msg.lower() else "high"
-        return self._save(self.CAT_TRAIN_ERR, {
-            "exception_type": type(exception).__name__,
-            "exception_msg":  msg,
-            "traceback":      tb,
-            "stage":          stage,
-            "config":         safe_config,
-            **vram_info,
-        }, normalized=normalized, severity=severity)
+        return self._save(
+            self.CAT_TRAIN_ERR,
+            {
+                "exception_type": type(exception).__name__,
+                "exception_msg": msg,
+                "traceback": tb,
+                "stage": stage,
+                "config": safe_config,
+                **vram_info,
+            },
+            normalized=normalized,
+            severity=severity,
+        )
 
     def capture_oom(self, config: dict, batch_size: int, seq_len: int) -> int | None:
         """OOM is config-only data, always allowed."""
@@ -466,18 +512,20 @@ class DataCollector:
             self._session_stats["dropped_consent"] += 1
             return None
 
-        safe_config = {
-            k: v for k, v in config.items()
-            if isinstance(v, (str, int, float, bool))
-        }
+        safe_config = {k: v for k, v in config.items() if isinstance(v, (str, int, float, bool))}
         normalized = f"oom::bs={batch_size}::seq={seq_len}"
-        return self._save(self.CAT_OOM, {
-            "batch_size": batch_size,
-            "seq_len":    seq_len,
-            "config":     safe_config,
-            "suggestion": f"Reducir batch_size a {max(1, batch_size // 2)} "
-                          f"o seq_len a {max(512, seq_len // 2)}",
-        }, normalized=normalized, severity="high")
+        return self._save(
+            self.CAT_OOM,
+            {
+                "batch_size": batch_size,
+                "seq_len": seq_len,
+                "config": safe_config,
+                "suggestion": f"Reducir batch_size a {max(1, batch_size // 2)} "
+                f"o seq_len a {max(512, seq_len // 2)}",
+            },
+            normalized=normalized,
+            severity="high",
+        )
 
     # ── Export for fine-tuning ────────────────────────────────────────────
 
@@ -513,14 +561,16 @@ class DataCollector:
             for r in items:
                 ex = self._record_to_example(cat, r, system)
                 if ex:
-                    examples.append({
-                        "messages": ex,
-                        "_meta": {
-                            "category": cat,
-                            "occurrences": r.get("_occurrences", 1),
-                            "source_id": r.get("_id"),
-                        },
-                    })
+                    examples.append(
+                        {
+                            "messages": ex,
+                            "_meta": {
+                                "category": cat,
+                                "occurrences": r.get("_occurrences", 1),
+                                "source_id": r.get("_id"),
+                            },
+                        }
+                    )
 
         return examples
 
@@ -537,9 +587,12 @@ class DataCollector:
             return [
                 {"role": "system", "content": system},
                 {"role": "user", "content": f"Ejecuta la herramienta {tool}"},
-                {"role": "assistant", "tool_calls": [
-                    {"name": tool, "arguments": args},
-                ]},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {"name": tool, "arguments": args},
+                    ],
+                },
                 {"role": "tool", "content": r.get("output") or json.dumps({"ok": True})},
             ]
 
@@ -548,30 +601,45 @@ class DataCollector:
             return [
                 {"role": "system", "content": system},
                 {"role": "user", "content": f"Ejecuta la herramienta {tool}"},
-                {"role": "assistant", "tool_calls": [
-                    {"name": tool, "arguments": args},
-                ]},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {"name": tool, "arguments": args},
+                    ],
+                },
                 {"role": "tool", "content": json.dumps({"ok": False, "error": err})},
-                {"role": "assistant",
-                 "content": f"La herramienta {tool} falló: {err}. Diagnostico con screenshot y pruebo alternativa."},
+                {
+                    "role": "assistant",
+                    "content": f"La herramienta {tool} falló: {err}. Diagnostico con screenshot y pruebo alternativa.",
+                },
             ]
 
         if cat == self.CAT_TRAIN_ERR:
             return [
                 {"role": "system", "content": system},
-                {"role": "user", "content": f"Inicia el entrenamiento con config {r.get('config', {})}"},
-                {"role": "assistant",
-                 "content": f"Error en etapa '{r.get('stage','?')}': {r.get('exception_type','?')}. "
-                            f"Detalle: {r.get('exception_msg','')[:200]}"},
+                {
+                    "role": "user",
+                    "content": f"Inicia el entrenamiento con config {r.get('config', {})}",
+                },
+                {
+                    "role": "assistant",
+                    "content": f"Error en etapa '{r.get('stage', '?')}': {r.get('exception_type', '?')}. "
+                    f"Detalle: {r.get('exception_msg', '')[:200]}",
+                },
             ]
 
         if cat == self.CAT_OOM:
             return [
                 {"role": "system", "content": system},
-                {"role": "user", "content": f"Entrena con batch_size={r.get('batch_size')}, seq_len={r.get('seq_len')}"},
-                {"role": "assistant", "content":
-                    f"CUDA OOM con batch_size={r.get('batch_size')}, seq_len={r.get('seq_len')}. "
-                    f"{r.get('suggestion','')}"},
+                {
+                    "role": "user",
+                    "content": f"Entrena con batch_size={r.get('batch_size')}, seq_len={r.get('seq_len')}",
+                },
+                {
+                    "role": "assistant",
+                    "content": f"CUDA OOM con batch_size={r.get('batch_size')}, seq_len={r.get('seq_len')}. "
+                    f"{r.get('suggestion', '')}",
+                },
             ]
 
         return None
@@ -602,10 +670,13 @@ class DataCollector:
             try:
                 os.makedirs(FALLBACK_DIR, exist_ok=True)
                 with open(FALLBACK_PATH, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(
-                        {"category": category, "severity": severity, **data},
-                        ensure_ascii=False,
-                    ) + "\n")
+                    f.write(
+                        json.dumps(
+                            {"category": category, "severity": severity, **data},
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
             except Exception as e:
                 print(f"[DataCollector] fallback write error: {e}", file=sys.stderr)
 
@@ -663,12 +734,14 @@ class DataCollector:
 
 # ─── Backwards-compat alias ────────────────────────────────────────────────
 
+
 # Old name kept so existing imports don't break
 class BugCollector(DataCollector):
     """Alias for backwards compatibility — prefer DataCollector."""
 
-    def capture_chat_feedback(self, user_input: str, model_output: str,
-                              corrected_output: str, session_id: str = "") -> int | None:
+    def capture_chat_feedback(
+        self, user_input: str, model_output: str, corrected_output: str, session_id: str = ""
+    ) -> int | None:
         """Legacy method — delegates to capture_correction (session_id discarded for privacy)."""
         return self.capture_correction(user_input, model_output, corrected_output)
 
@@ -678,6 +751,7 @@ class BugCollector(DataCollector):
 
 
 # ─── Hooks ─────────────────────────────────────────────────────────────────
+
 
 def install_training_hook(collector: DataCollector):
     """Hook sys.excepthook to capture training crashes automatically."""
@@ -713,9 +787,11 @@ if __name__ == "__main__":
     print("status inicial:", col.status(), "\n")
 
     # PII scrub demo
-    sample = ("Mi correo es agust@gmail.com y mi clave es sk-abc123def456ghi789. "
-              "Vivo en C:\\Users\\agustin\\Desktop\\proyecto. Mi IP es 200.42.13.5. "
-              "Llamame al +54 9 11 4444-5555.")
+    sample = (
+        "Mi correo es agust@gmail.com y mi clave es sk-abc123def456ghi789. "
+        "Vivo en C:\\Users\\agustin\\Desktop\\proyecto. Mi IP es 200.42.13.5. "
+        "Llamame al +54 9 11 4444-5555."
+    )
     print("ORIGINAL:", sample)
     print("SCRUBBED:", scrub_pii(sample), "\n")
 
@@ -729,8 +805,9 @@ if __name__ == "__main__":
     col.capture_tool_call(tool="click", args={"x": 120, "y": 300}, success=True, latency_ms=15)
 
     # Tool call failure (opt-in)
-    col.capture_tool_call(tool="open_app", args={"name": "chrome"},
-                          success=False, error="App not found")
+    col.capture_tool_call(
+        tool="open_app", args={"name": "chrome"}, success=False, error="App not found"
+    )
 
     # User correction (opt-in)
     col.capture_correction(
@@ -740,7 +817,9 @@ if __name__ == "__main__":
     )
 
     # Workflow (opt-in)
-    col.capture_workflow(["screenshot", "click", "type", "screenshot"], success=True, duration_ms=3200)
+    col.capture_workflow(
+        ["screenshot", "click", "type", "screenshot"], success=True, duration_ms=3200
+    )
 
     # Dedup test: same OOM 10 times → only first MAX_OCCURRENCES are saved
     for _ in range(10):

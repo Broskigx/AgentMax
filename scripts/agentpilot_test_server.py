@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Servidor local de prueba para la primera corrida de AgentMax.
 
 No usa modelos, claves externas, PostgreSQL ni Redis. Expone:
@@ -58,14 +58,17 @@ MAX_REQUEST_TOKENS = 900
 ADMIN_KEY = os.environ.get("AGENTMAX_ADMIN_KEY", "")
 BETA_CONFIG = get_beta_config()
 if BETA_CONFIG.config_errors:
-    raise RuntimeError(
-        "Invalid AgentMax configuration: " + "; ".join(BETA_CONFIG.config_errors)
-    )
-DATASET_ENABLED = os.environ.get("AGENTMAX_DATASET_ENABLED", "0").strip().lower() not in {
-    "0",
-    "false",
-    "no",
-} and BETA_CONFIG.beta_data_optin and beta_consent.is_enabled()
+    raise RuntimeError("Invalid AgentMax configuration: " + "; ".join(BETA_CONFIG.config_errors))
+DATASET_ENABLED = (
+    os.environ.get("AGENTMAX_DATASET_ENABLED", "0").strip().lower()
+    not in {
+        "0",
+        "false",
+        "no",
+    }
+    and BETA_CONFIG.beta_data_optin
+    and beta_consent.is_enabled()
+)
 DATASET_STORE_IMAGES = os.environ.get("AGENTMAX_DATASET_STORE_IMAGES", "0").strip().lower() in {
     "1",
     "true",
@@ -257,9 +260,7 @@ def _dataset_settings() -> dict[str, Any]:
         return defaults
     merged = {**defaults, **data}
     merged["enabled"] = (
-        DATASET_ENABLED
-        and bool(merged.get("enabled"))
-        and beta_consent.is_enabled()
+        DATASET_ENABLED and bool(merged.get("enabled")) and beta_consent.is_enabled()
     )
     merged["store_images"] = bool(merged["enabled"] and merged.get("store_images"))
     return merged
@@ -297,12 +298,9 @@ def _beta_status_payload() -> dict[str, Any]:
 def _save_dataset_settings(settings: dict[str, Any]) -> dict[str, Any]:
     clean = {
         "enabled": (
-            DATASET_ENABLED
-            and bool(settings.get("enabled", False))
-            and beta_consent.is_enabled()
+            DATASET_ENABLED and bool(settings.get("enabled", False)) and beta_consent.is_enabled()
         ),
-        "store_images": bool(settings.get("store_images", False))
-        and beta_consent.is_enabled(),
+        "store_images": bool(settings.get("store_images", False)) and beta_consent.is_enabled(),
         "redact_text": bool(settings.get("redact_text", True)),
         "schema_version": "AgentMax.training.v1",
     }
@@ -641,8 +639,16 @@ def _ledger_stats() -> dict[str, Any]:
         "grants": sum(1 for event in events if event.get("type") == "grant"),
         "charges": sum(1 for event in events if event.get("type") == "spend"),
         "rejections": sum(1 for event in events if event.get("type") == "reject"),
-        "tokens_granted": sum(int(account.get("total_granted", 0)) for account in users.values() if isinstance(account, dict)),
-        "tokens_used": sum(int(account.get("total_used", 0)) for account in users.values() if isinstance(account, dict)),
+        "tokens_granted": sum(
+            int(account.get("total_granted", 0))
+            for account in users.values()
+            if isinstance(account, dict)
+        ),
+        "tokens_used": sum(
+            int(account.get("total_used", 0))
+            for account in users.values()
+            if isinstance(account, dict)
+        ),
     }
 
 
@@ -700,7 +706,11 @@ def _telemetry_stats() -> dict[str, Any]:
         "tasks": {
             "total": len(TASKS),
             "completed": sum(1 for task in TASKS.values() if task.get("status") == "completed"),
-            "queued": sum(1 for task in TASKS.values() if task.get("status") in {"queued", "planning", "executing"}),
+            "queued": sum(
+                1
+                for task in TASKS.values()
+                if task.get("status") in {"queued", "planning", "executing"}
+            ),
             "failed": sum(1 for task in TASKS.values() if task.get("status") == "failed"),
         },
         "tokens": ledger,
@@ -872,7 +882,10 @@ def _thinking_core(
         "token_usage": charge,
         "token_balance": snapshot.get("balance", 0),
         "vision": {"detected": bool(image_meta), "images": image_meta},
-        "dataset": {"enabled": _dataset_settings().get("enabled", False), "path": str(DATASET_FILE)},
+        "dataset": {
+            "enabled": _dataset_settings().get("enabled", False),
+            "path": str(DATASET_FILE),
+        },
         "suggested_tools": ["test_server", "local_api", "token_ledger", "vision_metadata"],
     }
 
@@ -1663,9 +1676,7 @@ class AgentMaxTestHandler(BaseHTTPRequestHandler):
 
 def _serve(port: int, host: str) -> ThreadingHTTPServer:
     server = ThreadingHTTPServer((host, port), AgentMaxTestHandler)
-    thread = threading.Thread(
-        target=server.serve_forever, name=f"AgentMax-{port}", daemon=True
-    )
+    thread = threading.Thread(target=server.serve_forever, name=f"AgentMax-{port}", daemon=True)
     thread.start()
     label = "AgentMax server" if PRODUCT_MODE else "AgentMax test server"
     print(f"[OK] {label}: http://{host}:{port}", flush=True)

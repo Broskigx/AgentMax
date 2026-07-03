@@ -57,9 +57,7 @@ def validate_record(record: HtlggRecord) -> None:
             raise HtlggValidationError("decision element id contains invalid characters")
         sensitive = any(term in record.action.lower() for term in _SENSITIVE_ACTIONS)
         if (record.risk in {RiskLevel.R2, RiskLevel.R3} or sensitive) and not record.confirmed:
-            raise HtlggValidationError(
-                "R2/R3 and sensitive decisions require confirmed=true"
-            )
+            raise HtlggValidationError("R2/R3 and sensitive decisions require confirmed=true")
     if isinstance(record, ExecutionRecord) and not _TOKEN.fullmatch(record.action):
         raise HtlggValidationError("execution action contains invalid characters")
 

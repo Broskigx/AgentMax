@@ -1,4 +1,4 @@
-﻿"""
+"""
 WebSearchAgent -- autonomous web search and page reading with SSRF protection.
 """
 

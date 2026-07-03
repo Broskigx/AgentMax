@@ -1,4 +1,4 @@
-﻿"""AgentMax runtime - boots all subsystems, manages lifecycle."""
+"""AgentMax runtime - boots all subsystems, manages lifecycle."""
 
 from __future__ import annotations
 
@@ -185,6 +185,7 @@ class AgentMaxRuntime:
         # Wire anti-tamper AFTER PermissionManager exists. Snapshot real critical
         # functions that are always active (not the disabled LicenseManager).
         from core.security.anti_tamper import snapshot_critical_functions, start_watchdog
+
         snapshot_critical_functions()
         start_watchdog(degradation_callback=self._on_tamper_detected)
 

@@ -1,4 +1,4 @@
-﻿"""Redaction utilities for AgentMax session logs."""
+"""Redaction utilities for AgentMax session logs."""
 
 from __future__ import annotations
 

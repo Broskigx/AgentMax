@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Observability System
 
 Complete observability integration including:

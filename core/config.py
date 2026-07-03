@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -263,9 +263,7 @@ class AIConfig(BaseSettings):
     )
     llama_cpp_server_bin: str = Field(
         default="llama-server",
-        validation_alias=AliasChoices(
-            "AGENTMAX_LLAMA_SERVER_BIN", "AGENTMAX_LLAMACPP_SERVER_BIN"
-        ),
+        validation_alias=AliasChoices("AGENTMAX_LLAMA_SERVER_BIN", "AGENTMAX_LLAMACPP_SERVER_BIN"),
     )
     llama_cpp_model_path: str = Field(
         default="",

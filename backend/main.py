@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax License Backend -- FastAPI entry point.
 
 Startup sequence

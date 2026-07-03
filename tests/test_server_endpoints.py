@@ -119,7 +119,9 @@ def _mcp_server():
             )
         ]
     )
-    return build_tool_mcp_server(registry, lambda tid, args: _ToolRunResult(True, {"text": f"ran {tid}"}))
+    return build_tool_mcp_server(
+        registry, lambda tid, args: _ToolRunResult(True, {"text": f"ran {tid}"})
+    )
 
 
 def test_mcp_response_initialize_list_call() -> None:

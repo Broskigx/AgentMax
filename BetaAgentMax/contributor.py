@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 AgentMax Contributor v2.0 — Max Power Mode.
 
@@ -12,6 +12,7 @@ Uso:
   python contributor.py --coordinator_ip 192.168.196.1 --coordinator_port 12356
   python contributor.py --coordinator_ip 192.168.196.1 --max_power
 """
+
 import argparse
 import ctypes
 import gzip
@@ -27,27 +28,38 @@ import time
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser()
-parser.add_argument("--coordinator_ip",   required=True)
+parser.add_argument("--coordinator_ip", required=True)
 parser.add_argument("--coordinator_port", type=int, default=12356)
-parser.add_argument("--train_dir",        default=".")
-parser.add_argument("--max_power",        action="store_true",
-                    help="Activa TODAS las optimizaciones de rendimiento (recomendado)")
-parser.add_argument("--power_target",     type=float, default=90.0,
-                    help="Porcentaje objetivo de uso real de la PC conectada (10-95, default 90)")
-parser.add_argument("--torchrun",         default=None)
-parser.add_argument("--reconnect_delay",  type=int, default=10,
-                    help="Segundos entre intentos de reconexion")
-parser.add_argument("--max_reconnects",   type=int, default=5)
+parser.add_argument("--train_dir", default=".")
+parser.add_argument(
+    "--max_power",
+    action="store_true",
+    help="Activa TODAS las optimizaciones de rendimiento (recomendado)",
+)
+parser.add_argument(
+    "--power_target",
+    type=float,
+    default=90.0,
+    help="Porcentaje objetivo de uso real de la PC conectada (10-95, default 90)",
+)
+parser.add_argument("--torchrun", default=None)
+parser.add_argument(
+    "--reconnect_delay", type=int, default=10, help="Segundos entre intentos de reconexion"
+)
+parser.add_argument("--max_reconnects", type=int, default=5)
 args = parser.parse_args()
 
 POWER_TARGET_PERCENT = max(10.0, min(float(args.power_target), 95.0))
 
+
 def power_fraction() -> float:
     return POWER_TARGET_PERCENT / 100.0
+
 
 def target_threads() -> int:
     cpu_count = os.cpu_count() or 1
     return max(1, min(cpu_count, int((cpu_count * power_fraction()) + 0.999)))
+
 
 IS_WINDOWS = platform.system() == "Windows"
 ADAPTER_DIR = os.path.join(args.train_dir, "outputs", "federated", "current_adapter")
@@ -70,6 +82,7 @@ def is_admin() -> bool:
     else:
         return os.geteuid() == 0
 
+
 def request_admin_and_relaunch():
     """Relanza el script como administrador en Windows."""
     if not IS_WINDOWS:
@@ -77,9 +90,7 @@ def request_admin_and_relaunch():
         return
     log("ADMIN", "Solicitando permisos de ADMINISTRADOR para maxima potencia GPU...")
     params = " ".join([f'"{a}"' for a in sys.argv])
-    ctypes.windll.shell32.ShellExecuteW(
-        None, "runas", sys.executable, params, None, 1
-    )
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
     sys.exit(0)
 
 
@@ -152,17 +163,17 @@ class MaxPowerManager:
         try:
             # Persistence mode: reduce latency de inicializacion de kernel
             r = subprocess.run(
-                ["nvidia-smi", "--persistence-mode=1"],
-                capture_output=True, text=True, timeout=5
+                ["nvidia-smi", "--persistence-mode=1"], capture_output=True, text=True, timeout=5
             )
             if r.returncode == 0:
                 self.applied.append("gpu_persistence_mode")
 
             # Obtener power limit maximo de la GPU
             r = subprocess.run(
-                ["nvidia-smi", "--query-gpu=power.max_limit",
-                 "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=5
+                ["nvidia-smi", "--query-gpu=power.max_limit", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if r.returncode == 0:
                 max_watts_raw = r.stdout.strip().split("\n")[0].strip()
@@ -171,7 +182,9 @@ class MaxPowerManager:
                     target_watts = max(1, int(round(max_watts * self.fraction)))
                     r2 = subprocess.run(
                         ["nvidia-smi", f"--power-limit={target_watts}"],
-                        capture_output=True, text=True, timeout=5
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
                     )
                     if r2.returncode == 0:
                         self.applied.append(
@@ -179,16 +192,14 @@ class MaxPowerManager:
                         )
 
             # Auto boost ON para maxima frecuencia de GPU
-            subprocess.run(
-                ["nvidia-smi", "--auto-boost-default=1"],
-                capture_output=True, timeout=5
-            )
+            subprocess.run(["nvidia-smi", "--auto-boost-default=1"], capture_output=True, timeout=5)
             self.applied.append("gpu_auto_boost")
 
             # Desactivar throttling por temperatura (si se puede)
             subprocess.run(
                 ["nvidia-smi", "--gom=0"],  # Graphics Optimization Mode: all on
-                capture_output=True, timeout=5
+                capture_output=True,
+                timeout=5,
             )
 
         except FileNotFoundError:
@@ -208,6 +219,7 @@ class MaxPowerManager:
                 self.applied.append(f"cpu_affinity={use_count}/{cpu_count}cores")
             else:
                 import psutil
+
                 p = psutil.Process()
                 p.cpu_affinity(list(range(use_count)))
                 self.applied.append(f"cpu_affinity={use_count}/{cpu_count}cores")
@@ -218,6 +230,7 @@ class MaxPowerManager:
         """Desactivar GC de Python durante entrenamiento (lo hacemos manual)."""
         try:
             import gc
+
             gc.disable()
             self.applied.append("gc_disabled")
         except Exception:
@@ -227,6 +240,7 @@ class MaxPowerManager:
         """Configurar torch para el objetivo de potencia."""
         try:
             import torch
+
             torch.set_num_threads(self.cpu_threads)
             torch.set_num_interop_threads(max(1, self.cpu_threads // 2))
             torch.backends.cuda.matmul.allow_tf32 = True
@@ -246,6 +260,7 @@ class MaxPowerManager:
         """Limpiar cache de VRAM antes de entrenar."""
         try:
             import torch
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.reset_peak_memory_stats()
@@ -268,6 +283,7 @@ def detect_hardware() -> dict:
     }
     try:
         import torch
+
         if torch.cuda.is_available():
             p = torch.cuda.get_device_properties(0)
             hw["gpu"] = p.name
@@ -277,6 +293,7 @@ def detect_hardware() -> dict:
         pass
     try:
         import psutil
+
         hw["ram_gb"] = round(psutil.virtual_memory().total / 1e9, 1)
     except Exception:
         pass
@@ -287,10 +304,14 @@ def detect_hardware() -> dict:
 def get_gpu_stats() -> dict:
     try:
         r = subprocess.run(
-            ["nvidia-smi",
-             "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=3
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         if r.returncode == 0:
             parts = [p.strip() for p in r.stdout.strip().split(",")]
@@ -310,6 +331,7 @@ def get_gpu_stats() -> dict:
 def get_system_stats() -> dict:
     try:
         import psutil
+
         mem = psutil.virtual_memory()
         return {
             "cpu_util": round(float(psutil.cpu_percent(interval=None)), 1),
@@ -330,7 +352,8 @@ def find_torchrun() -> str:
         os.path.join(os.path.dirname(sys.executable), "torchrun.exe"),
         os.path.join(sys.exec_prefix, "Scripts", "torchrun"),
         os.path.join(os.path.dirname(sys.executable), "torchrun"),
-        "torchrun.exe", "torchrun",
+        "torchrun.exe",
+        "torchrun",
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -342,6 +365,7 @@ def find_torchrun() -> str:
 def send_json_msg(conn: socket.socket, data: dict):
     msg_bytes = (json.dumps(data, ensure_ascii=False) + "\n").encode()
     conn.sendall(struct.pack("!I", len(msg_bytes)) + msg_bytes)
+
 
 def recv_json_msg(conn: socket.socket, timeout: float = 60.0) -> dict | None:
     try:
@@ -361,12 +385,14 @@ def recv_json_msg(conn: socket.socket, timeout: float = 60.0) -> dict | None:
     except Exception:
         return None
 
+
 def send_large(conn: socket.socket, data: bytes):
     conn.sendall(struct.pack("!Q", len(data)))
     sent, chunk = 0, 65536
     while sent < len(data):
-        conn.sendall(data[sent:sent+chunk])
+        conn.sendall(data[sent : sent + chunk])
         sent += chunk
+
 
 def recv_large(conn: socket.socket, timeout: float = 600.0) -> bytes | None:
     try:
@@ -436,6 +462,7 @@ def pack_adapter_weights(adapter_dir: str) -> bytes | None:
             if fname.endswith(".safetensors"):
                 try:
                     from safetensors.torch import load_file
+
                     state_dict.update(load_file(fpath, device="cpu"))
                 except ImportError:
                     # Fallback: leer con torch si no hay safetensors
@@ -451,8 +478,7 @@ def pack_adapter_weights(adapter_dir: str) -> bytes | None:
 
         # Convertir a fp16 para reducir tamaño de transferencia a la mitad
         state_dict_fp16 = {
-            k: v.half() if v.is_floating_point() else v
-            for k, v in state_dict.items()
+            k: v.half() if v.is_floating_point() else v for k, v in state_dict.items()
         }
 
         # Serializar + comprimir
@@ -474,6 +500,7 @@ def unpack_and_save_weights(data: bytes, adapter_dir: str) -> bool:
     """Descomprime y guarda pesos promediados recibidos del coordinador."""
     try:
         import torch
+
         raw = gzip.decompress(data)
         state_dict = torch.load(io.BytesIO(raw), map_location="cpu", weights_only=True)
         os.makedirs(adapter_dir, exist_ok=True)
@@ -481,7 +508,10 @@ def unpack_and_save_weights(data: bytes, adapter_dir: str) -> bool:
         torch.save(state_dict, out_path)
         size_mb = len(data) / 1024 / 1024
         params_m = sum(v.numel() for v in state_dict.values()) / 1e6
-        log("LOAD", f"Pesos promediados guardados: {params_m:.1f}M params | {size_mb:.1f} MB | {out_path}")
+        log(
+            "LOAD",
+            f"Pesos promediados guardados: {params_m:.1f}M params | {size_mb:.1f} MB | {out_path}",
+        )
         return True
     except Exception as e:
         log("ERROR", f"unpack_and_save_weights: {e}")
@@ -489,8 +519,9 @@ def unpack_and_save_weights(data: bytes, adapter_dir: str) -> bool:
 
 
 # ── Entrenamiento local ───────────────────────────────────────────────────────
-def run_training_round(cfg: dict, round_n: int, cid: int,
-                       conn: socket.socket, torchrun_path: str) -> tuple[bool, int]:
+def run_training_round(
+    cfg: dict, round_n: int, cid: int, conn: socket.socket, torchrun_path: str
+) -> tuple[bool, int]:
     """
     Lanza train_ddp.py via torchrun y reporta progress al coordinador.
     Devuelve (exito, steps_completados).
@@ -512,11 +543,16 @@ def run_training_round(cfg: dict, round_n: int, cid: int,
 
     cmd = [
         torchrun_path,
-        "--nnodes", "1",
-        "--nproc_per_node", "1",
-        "--node_rank", "0",
-        "--master_addr", "127.0.0.1",
-        "--master_port", str(12355 + cid),  # puerto unico por contributor
+        "--nnodes",
+        "1",
+        "--nproc_per_node",
+        "1",
+        "--node_rank",
+        "0",
+        "--master_addr",
+        "127.0.0.1",
+        "--master_port",
+        str(12355 + cid),  # puerto unico por contributor
         train_script,
         f"--batch_size={cfg.get('batch_size', 1)}",
         f"--lora_rank={cfg.get('lora_rank', 16)}",
@@ -557,10 +593,28 @@ def run_training_round(cfg: dict, round_n: int, cid: int,
 
     # Filtros para reenviar al coordinador las lineas mas utiles del log unsloth
     _LOG_KEYWORDS = (
-        "loss", "epoch", "step", "unsloth", "lora", "grad",
-        "learning_rate", "torch", "cuda", "vram", "memory",
-        "warning", "error", "trainer", "%|", "it/s", "saved",
-        "checkpoint", "dataset", "batch", "loading", "compiled",
+        "loss",
+        "epoch",
+        "step",
+        "unsloth",
+        "lora",
+        "grad",
+        "learning_rate",
+        "torch",
+        "cuda",
+        "vram",
+        "memory",
+        "warning",
+        "error",
+        "trainer",
+        "%|",
+        "it/s",
+        "saved",
+        "checkpoint",
+        "dataset",
+        "batch",
+        "loading",
+        "compiled",
     )
 
     def _should_forward(s: str) -> bool:
@@ -576,11 +630,14 @@ def run_training_round(cfg: dict, round_n: int, cid: int,
         # Reenviar lineas relevantes al coordinador para que el Master las vea
         if _should_forward(line):
             try:
-                send_json_msg(conn, {
-                    "type": "log",
-                    "round": round_n,
-                    "line": line[:500],  # cap por seguridad
-                })
+                send_json_msg(
+                    conn,
+                    {
+                        "type": "log",
+                        "round": round_n,
+                        "line": line[:500],  # cap por seguridad
+                    },
+                )
             except Exception:
                 pass
 
@@ -601,7 +658,9 @@ def run_training_round(cfg: dict, round_n: int, cid: int,
                         # Reportar progreso al coordinador
                         now = time.time()
                         if now - last_report >= report_interval:
-                            publish_progress(conn, build_progress_payload(round_n, steps_done, loss))
+                            publish_progress(
+                                conn, build_progress_payload(round_n, steps_done, loss)
+                            )
                             last_report = now
                         break
             except Exception:
@@ -625,7 +684,10 @@ def contribute():
     hw = detect_hardware()
     torchrun_path = find_torchrun()
 
-    log("HW", f"GPU: {hw['gpu']} ({hw['vram_gb']} GB VRAM, {hw['ram_gb']} GB RAM, {hw['cores']} cores CPU)")
+    log(
+        "HW",
+        f"GPU: {hw['gpu']} ({hw['vram_gb']} GB VRAM, {hw['ram_gb']} GB RAM, {hw['cores']} cores CPU)",
+    )
     log("HW", f"CUDA: {hw['cuda']} | torchrun: {torchrun_path}")
 
     if args.max_power:
@@ -670,7 +732,7 @@ def contribute():
                 # Recibir pesos semilla antes de entrenar
                 if mtype == "seed_weights":
                     size = msg.get("size", 0)
-                    log("SEED", f"Recibiendo pesos semilla ({size/1024/1024:.1f} MB)...")
+                    log("SEED", f"Recibiendo pesos semilla ({size / 1024 / 1024:.1f} MB)...")
                     seed_data = recv_large(conn, timeout=300.0)
                     if seed_data:
                         if unpack_and_save_weights(seed_data, ADAPTER_DIR):
@@ -683,15 +745,18 @@ def contribute():
                     r = msg.get("round", 1)
                     cfg = msg.get("config", {})
 
-                    log("ROUND", f"{'='*20} RONDA {r} {'='*20}")
-                    log("ROUND", f"Config: batch={cfg.get('batch_size')} rank={cfg.get('lora_rank')} "
-                        f"seq={cfg.get('max_seq_length')} workers={cfg.get('num_workers')}")
+                    log("ROUND", f"{'=' * 20} RONDA {r} {'=' * 20}")
+                    log(
+                        "ROUND",
+                        f"Config: batch={cfg.get('batch_size')} rank={cfg.get('lora_rank')} "
+                        f"seq={cfg.get('max_seq_length')} workers={cfg.get('num_workers')}",
+                    )
 
                     # Entrenar
                     t_start = time.time()
                     success, steps = run_training_round(cfg, r, cid, conn, torchrun_path)
                     elapsed = time.time() - t_start
-                    log("ROUND", f"Entrenamiento: {elapsed/60:.1f} min | {steps} steps")
+                    log("ROUND", f"Entrenamiento: {elapsed / 60:.1f} min | {steps} steps")
 
                     # Notificar fin
                     send_json_msg(conn, {"type": "done", "round": r, "steps": steps})
@@ -713,7 +778,10 @@ def contribute():
                     if avg_msg and avg_msg.get("type") == "averaged":
                         size = avg_msg.get("size", 0)
                         if size > 0:
-                            log("RECV", f"Recibiendo pesos promediados ({size/1024/1024:.1f} MB)...")
+                            log(
+                                "RECV",
+                                f"Recibiendo pesos promediados ({size / 1024 / 1024:.1f} MB)...",
+                            )
                             avg_data = recv_large(conn, timeout=300.0)
                             if avg_data:
                                 unpack_and_save_weights(avg_data, ADAPTER_DIR)
@@ -737,14 +805,20 @@ def contribute():
 
         except ConnectionRefusedError:
             reconnects += 1
-            log("RETRY", f"Coordinador no disponible. Intento {reconnects}/{args.max_reconnects} "
-                f"en {args.reconnect_delay}s...")
+            log(
+                "RETRY",
+                f"Coordinador no disponible. Intento {reconnects}/{args.max_reconnects} "
+                f"en {args.reconnect_delay}s...",
+            )
             time.sleep(args.reconnect_delay)
 
         except (ConnectionError, OSError) as e:
             reconnects += 1
-            log("RETRY", f"Conexion perdida: {e}. Intento {reconnects}/{args.max_reconnects} "
-                f"en {args.reconnect_delay}s...")
+            log(
+                "RETRY",
+                f"Conexion perdida: {e}. Intento {reconnects}/{args.max_reconnects} "
+                f"en {args.reconnect_delay}s...",
+            )
             time.sleep(args.reconnect_delay)
 
         except KeyboardInterrupt:
@@ -754,6 +828,7 @@ def contribute():
         except Exception as e:
             log("ERROR", f"Error inesperado: {e}")
             import traceback
+
             traceback.print_exc()
             reconnects += 1
             time.sleep(args.reconnect_delay)

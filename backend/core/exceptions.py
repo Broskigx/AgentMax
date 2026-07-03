@@ -1,4 +1,4 @@
-﻿"""Typed exception hierarchy for AgentMax backend."""
+"""Typed exception hierarchy for AgentMax backend."""
 
 from __future__ import annotations
 

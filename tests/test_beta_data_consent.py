@@ -1,4 +1,4 @@
-﻿"""Privacy guards for beta data collection: opt-in only + redaction."""
+"""Privacy guards for beta data collection: opt-in only + redaction."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-﻿"""Abstract AI client -- protocol shared by Claude and LM Studio backends."""
+"""Abstract AI client -- protocol shared by Claude and LM Studio backends."""
 
 from __future__ import annotations
 

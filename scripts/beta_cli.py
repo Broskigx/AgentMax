@@ -20,7 +20,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="AgentMax closed beta tools")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("reset-db", help="Reset the local beta SQLite database")
-    export_feedback = sub.add_parser("export-feedback", help="Export tester feedback to JSON and CSV")
+    export_feedback = sub.add_parser(
+        "export-feedback", help="Export tester feedback to JSON and CSV"
+    )
     export_feedback.add_argument("--output-dir", type=Path, default=ROOT / "beta_exports")
     export_diag = sub.add_parser("export-diagnostics", help="Export redacted diagnostics bundle")
     export_diag.add_argument("--output-dir", type=Path, default=ROOT / "diagnostics")
@@ -37,7 +39,13 @@ def main() -> int:
         print(json.dumps(storage.export_feedback(args.output_dir), ensure_ascii=False, indent=2))
         return 0
     if args.command == "export-diagnostics":
-        print(json.dumps(export_diagnostics_bundle(args.output_dir, storage=storage), ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                export_diagnostics_bundle(args.output_dir, storage=storage),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
     if args.command == "smoke-test":
         result = run_beta_smoke_test(args.output_dir)

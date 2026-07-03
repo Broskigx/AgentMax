@@ -49,8 +49,7 @@ class LlamaCppSidecarClient(BaseAIClient):
         self._host = getattr(self._config, "llama_cpp_host", "127.0.0.1")
         self._port = int(getattr(self._config, "llama_cpp_port", 8080))
         self._base_url = (
-            getattr(self._config, "api_base_url", None)
-            or f"http://{self._host}:{self._port}/v1"
+            getattr(self._config, "api_base_url", None) or f"http://{self._host}:{self._port}/v1"
         ).rstrip("/")
         self._model_path = str(getattr(self._config, "llama_cpp_model_path", "") or "")
         self._server_bin = str(getattr(self._config, "llama_cpp_server_bin", "llama-server"))
@@ -302,9 +301,7 @@ class LlamaCppSidecarClient(BaseAIClient):
                             "content": [
                                 {
                                     "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/png;base64,{image_b64}"
-                                    },
+                                    "image_url": {"url": f"data:image/png;base64,{image_b64}"},
                                 },
                                 {"type": "text", "text": message.get("content", "")},
                             ],

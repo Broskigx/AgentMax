@@ -1,4 +1,4 @@
-﻿"""Startup dependency health checker for the lightweight AgentMax runtime."""
+"""Startup dependency health checker for the lightweight AgentMax runtime."""
 
 from __future__ import annotations
 

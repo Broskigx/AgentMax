@@ -1,4 +1,4 @@
-﻿"""Context analysis for AgentMax internal reasoning."""
+"""Context analysis for AgentMax internal reasoning."""
 
 from __future__ import annotations
 

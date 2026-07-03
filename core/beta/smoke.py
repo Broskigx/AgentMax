@@ -36,8 +36,16 @@ def run_beta_smoke_test(tmp_dir: str | Path | None = None) -> dict[str, Any]:
         category="bug",
         message="Smoke feedback with token=should_redact",
     )
-    logger.log("app", level="info", source="smoke", event="smoke.started", metadata={"task": task_id})
-    logger.log("beta_feedback", level="info", source="smoke", event="feedback.saved", metadata={"feedback_id": feedback_id})
+    logger.log(
+        "app", level="info", source="smoke", event="smoke.started", metadata={"task": task_id}
+    )
+    logger.log(
+        "beta_feedback",
+        level="info",
+        source="smoke",
+        event="feedback.saved",
+        metadata={"feedback_id": feedback_id},
+    )
     diagnostics = export_diagnostics_bundle(output_dir=tmp_dir, config=cfg, storage=storage)
     feedback_json = " ".join(str(row) for row in storage.feedback_rows()[:10])
     app_logs = " ".join(str(row) for row in logger.recent("app", 10))
@@ -62,6 +70,12 @@ def run_beta_smoke_test(tmp_dir: str | Path | None = None) -> dict[str, Any]:
         "task_states": storage.recent_tasks(1)[0]["status"] == "stopped",
         "feature_flags": flags_ok,
         "diagnostics": bool(diagnostics.get("zip_path")),
-        "no_visible_secrets": "should_redact" not in feedback_json and "should_redact" not in app_logs,
+        "no_visible_secrets": "should_redact" not in feedback_json
+        and "should_redact" not in app_logs,
     }
-    return {"ok": all(checks.values()), "checks": checks, "redis": redis_status.__dict__, "diagnostics": diagnostics}
+    return {
+        "ok": all(checks.values()),
+        "checks": checks,
+        "redis": redis_status.__dict__,
+        "diagnostics": diagnostics,
+    }

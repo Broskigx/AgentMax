@@ -312,9 +312,7 @@ class UserInputMonitor:
                         if self._authorization_validator(self._active_task_id):
                             self.pause_controller.resume()
                             self._blocked_event_sent = False
-                            await self._emit(
-                                "input.agent_resumed", "quiet_window_and_authorized"
-                            )
+                            await self._emit("input.agent_resumed", "quiet_window_and_authorized")
                         elif not self._blocked_event_sent:
                             await self._emit("input.agent_blocked", "authorization_expired")
                             self._blocked_event_sent = True

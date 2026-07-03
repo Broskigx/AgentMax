@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Automation Engine
 
 Advanced automation capabilities with workflow support,
@@ -738,9 +738,7 @@ class AutomationAPIRouter:
             try:
                 result = await self.engine.execute_workflow(automation_id, trigger_data or {})
             except KeyError:
-                raise HTTPException(
-                    status_code=404, detail="Automation not found"
-                ) from None
+                raise HTTPException(status_code=404, detail="Automation not found") from None
 
             return {
                 "execution_id": result.execution_id,

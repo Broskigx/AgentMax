@@ -1,4 +1,4 @@
-﻿"""Top-level AgentMax command line interface."""
+"""Top-level AgentMax command line interface."""
 
 from __future__ import annotations
 

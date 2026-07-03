@@ -1,4 +1,4 @@
-﻿"""
+"""
 IPC authentication layer for AgentMax — Phase 2.
 
 Goal
@@ -226,9 +226,7 @@ def check_rest_request(
         return
     if is_exempt_path(path):
         return
-    normalized_headers = {
-        str(name).lower(): str(value) for name, value in headers.items()
-    }
+    normalized_headers = {str(name).lower(): str(value) for name, value in headers.items()}
     presented = normalized_headers.get(AUTH_HEADER.lower())
     if not validate_token(presented, expected_token):
         raise IPCAuthError("missing_or_invalid_token")

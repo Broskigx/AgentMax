@@ -105,7 +105,12 @@ def export_diagnostics_bundle(
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in package_dir.rglob("*"):
             zf.write(path, path.relative_to(package_dir))
-    return {"ok": True, "zip_path": str(zip_path), "folder": str(package_dir), "created_at": time.time()}
+    return {
+        "ok": True,
+        "zip_path": str(zip_path),
+        "folder": str(package_dir),
+        "created_at": time.time(),
+    }
 
 
 def _assert_safe_bundle(package_dir: Path) -> None:

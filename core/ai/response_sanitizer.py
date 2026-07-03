@@ -1,4 +1,4 @@
-﻿"""Public-response sanitizer for AgentMax runtimes.
+"""Public-response sanitizer for AgentMax runtimes.
 
 The model may be a Thinking checkpoint, but AgentMax must never display raw
 private reasoning in the product UI.  This module keeps the rule testable on

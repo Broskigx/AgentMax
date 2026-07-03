@@ -1,4 +1,4 @@
-﻿"""Dry-run and diagnostic runner for the AgentMax tool system."""
+"""Dry-run and diagnostic runner for the AgentMax tool system."""
 
 from __future__ import annotations
 

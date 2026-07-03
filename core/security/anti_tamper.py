@@ -1,4 +1,4 @@
-﻿"""
+"""
 Anti-tamper watchdog -- Python-side protection layer.
 
 Strategy: detect → degrade silently, never crash.

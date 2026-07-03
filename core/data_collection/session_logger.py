@@ -1,4 +1,4 @@
-﻿"""Session logger for AgentMax data collection.
+"""Session logger for AgentMax data collection.
 
 All logs are stored LOCALLY under the resolved data dir (AGENTMAX_DATA_DIR or ~/.agentmax) /data/AgentMax_logs/ — never sent to any
 server.  Used to improve AgentMax in future fine-tuning releases.
@@ -29,6 +29,7 @@ from core.data_collection.redactor import redact_record
 
 log = logging.getLogger(__name__)
 
+
 def _resolve_data_root() -> pathlib.Path:
     env = os.environ.get("AGENTMAX_DATA_DIR")
     if env:
@@ -38,6 +39,7 @@ def _resolve_data_root() -> pathlib.Path:
         base = pathlib.Path.home() / ".agentmax"
     root = base / "data" / "AgentMax_logs"
     return root
+
 
 _DATA_ROOT = _resolve_data_root()
 _DIRS = ("raw", "redacted", "approved", "rejected")

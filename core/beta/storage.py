@@ -33,7 +33,9 @@ def _json(data: Any) -> str:
 
 def _sensitive_key(key: str) -> bool:
     lowered = key.lower()
-    return any(part in lowered for part in ("api_key", "token", "secret", "password", "cookie", "jwt"))
+    return any(
+        part in lowered for part in ("api_key", "token", "secret", "password", "cookie", "jwt")
+    )
 
 
 class StorageService:
@@ -88,7 +90,9 @@ class StorageService:
                 ).fetchall()
             ]
             user_count = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
-            feedback_count = conn.execute("SELECT COUNT(*) AS n FROM tester_feedback").fetchone()["n"]
+            feedback_count = conn.execute("SELECT COUNT(*) AS n FROM tester_feedback").fetchone()[
+                "n"
+            ]
         return {
             "ok": True,
             "path": str(self.db_path),

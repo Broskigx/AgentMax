@@ -1,4 +1,4 @@
-﻿"""Tests for the startup health checker."""
+"""Tests for the startup health checker."""
 
 from unittest.mock import patch
 

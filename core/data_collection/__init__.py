@@ -1,4 +1,4 @@
-﻿"""Data collection helpers for AgentMax fine-tuning logs."""
+"""Data collection helpers for AgentMax fine-tuning logs."""
 
 from .redactor import redact_record, redact_text
 

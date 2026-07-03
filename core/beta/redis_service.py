@@ -122,7 +122,9 @@ class RedisService:
         now = time.time()
         if lock and float(lock.get("expires_at", 0)) > now:
             return False
-        self.storage.set_setting(f"redis_fallback.{key}", {"owner": owner, "expires_at": now + ttl_sec})
+        self.storage.set_setting(
+            f"redis_fallback.{key}", {"owner": owner, "expires_at": now + ttl_sec}
+        )
         return True
 
     def releaseLock(self, name: str, owner: str) -> bool:  # noqa: N802

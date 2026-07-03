@@ -55,9 +55,7 @@ def main() -> int:
         if lowered == ".env" or lowered.startswith(".env."):
             errors.append(f"tracked environment file: {relative}")
         if path.exists() and path.stat().st_size > MAX_BYTES:
-            errors.append(
-                f"tracked file exceeds 95 MiB: {relative} ({path.stat().st_size} bytes)"
-            )
+            errors.append(f"tracked file exceeds 95 MiB: {relative} ({path.stat().st_size} bytes)")
         if suffix in GENERATED_EXTENSIONS or relative.startswith("diagnostics/"):
             warnings.append(f"tracked generated artifact: {relative}")
         if not path.exists() or path.stat().st_size > 2_000_000:

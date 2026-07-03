@@ -3,6 +3,7 @@
 HardwareDetective — escanea GPU, CPU, RAM y hace benchmark real.
 Emite JSON por stdout para que Rust lo pueda parsear via training:log.
 """
+
 import json
 import os
 import platform
@@ -28,16 +29,16 @@ def scan_gpu() -> dict:
     parts = [p.strip() for p in raw.split(",")]
     try:
         return {
-            "available":      True,
-            "gpu":            parts[0],
-            "vram_total_gb":  round(float(parts[1]) / 1000, 1),
-            "vram_free_gb":   round(float(parts[2]) / 1000, 1),
-            "gpu_util_pct":   float(parts[3]) if parts[3] != "[N/A]" else 0,
-            "temp_c":         float(parts[4]) if parts[4] != "[N/A]" else 0,
-            "power_draw_w":   float(parts[5]) if parts[5] != "[N/A]" else 0,
-            "power_limit_w":  float(parts[6]) if parts[6] != "[N/A]" else 0,
+            "available": True,
+            "gpu": parts[0],
+            "vram_total_gb": round(float(parts[1]) / 1000, 1),
+            "vram_free_gb": round(float(parts[2]) / 1000, 1),
+            "gpu_util_pct": float(parts[3]) if parts[3] != "[N/A]" else 0,
+            "temp_c": float(parts[4]) if parts[4] != "[N/A]" else 0,
+            "power_draw_w": float(parts[5]) if parts[5] != "[N/A]" else 0,
+            "power_limit_w": float(parts[6]) if parts[6] != "[N/A]" else 0,
             "driver_version": parts[7],
-            "cuda_version":   parts[8] if len(parts) > 8 else "?",
+            "cuda_version": parts[8] if len(parts) > 8 else "?",
         }
     except (ValueError, IndexError):
         return {"available": False, "gpu": raw[:60], "vram_total_gb": 0, "vram_free_gb": 0}
@@ -47,6 +48,7 @@ def scan_cpu() -> dict:
     cores_logical = os.cpu_count() or 1
     try:
         import psutil
+
         freq = psutil.cpu_freq()
         freq_ghz = round(freq.max / 1000, 2) if freq else 0
         cores_physical = psutil.cpu_count(logical=False) or cores_logical
@@ -63,21 +65,22 @@ def scan_cpu() -> dict:
         name = raw.split(":")[1].strip() if ":" in raw else "?"
 
     return {
-        "name":           name,
+        "name": name,
         "cores_physical": cores_physical,
-        "cores_logical":  cores_logical,
-        "freq_max_ghz":   freq_ghz,
+        "cores_logical": cores_logical,
+        "freq_max_ghz": freq_ghz,
     }
 
 
 def scan_ram() -> dict:
     try:
         import psutil
+
         vm = psutil.virtual_memory()
         return {
-            "total_gb":  round(vm.total / 1e9, 1),
-            "free_gb":   round(vm.available / 1e9, 1),
-            "used_pct":  vm.percent,
+            "total_gb": round(vm.total / 1e9, 1),
+            "free_gb": round(vm.available / 1e9, 1),
+            "used_pct": vm.percent,
         }
     except ImportError:
         pass
@@ -96,6 +99,7 @@ def benchmark_gpu() -> dict:
     """Quick FP16 matmul benchmark → TFLOPS estimate."""
     try:
         import torch
+
         if not torch.cuda.is_available():
             return {"tflops_fp16": 0, "vram_peak_gb": 0, "available": False}
 
@@ -118,7 +122,7 @@ def benchmark_gpu() -> dict:
         elapsed = time.perf_counter() - t0
 
         # 2 * N^3 flops per matmul
-        flops = 2 * (size ** 3) * iters
+        flops = 2 * (size**3) * iters
         tflops = flops / elapsed / 1e12
         peak_gb = torch.cuda.max_memory_allocated() / 1e9
 
@@ -126,32 +130,33 @@ def benchmark_gpu() -> dict:
         torch.cuda.empty_cache()
 
         return {
-            "tflops_fp16":  round(tflops, 2),
+            "tflops_fp16": round(tflops, 2),
             "vram_peak_gb": round(peak_gb, 2),
-            "available":    True,
+            "available": True,
         }
     except Exception as e:
         return {"tflops_fp16": 0, "vram_peak_gb": 0, "available": False, "error": str(e)}
 
 
 def full_scan(run_benchmark: bool = True) -> dict:
-    gpu  = scan_gpu()
-    cpu  = scan_cpu()
-    ram  = scan_ram()
+    gpu = scan_gpu()
+    cpu = scan_cpu()
+    ram = scan_ram()
     bench = benchmark_gpu() if run_benchmark and gpu.get("available") else {"available": False}
 
     return {
-        "gpu":       gpu,
-        "cpu":       cpu,
-        "ram":       ram,
+        "gpu": gpu,
+        "cpu": cpu,
+        "ram": ram,
         "benchmark": bench,
-        "platform":  platform.system(),
-        "python":    sys.version.split()[0],
+        "platform": platform.system(),
+        "python": sys.version.split()[0],
     }
 
 
 if __name__ == "__main__":
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--no-benchmark", action="store_true")
     p.add_argument("--json", action="store_true", help="Emitir JSON puro en vez de bonito")
@@ -163,20 +168,38 @@ if __name__ == "__main__":
     if args.json:
         print(json.dumps(result, ensure_ascii=False), flush=True)
     else:
-        gpu  = result["gpu"]
-        cpu  = result["cpu"]
-        ram  = result["ram"]
+        gpu = result["gpu"]
+        cpu = result["cpu"]
+        ram = result["ram"]
         bench = result["benchmark"]
 
         print(f"[HARDWARE] GPU:  {gpu.get('gpu', 'N/A')}", flush=True)
         if gpu.get("available"):
-            print(f"[HARDWARE]   VRAM: {gpu['vram_free_gb']}/{gpu['vram_total_gb']} GB libre", flush=True)
-            print(f"[HARDWARE]   Temp: {gpu['temp_c']}°C  Power: {gpu['power_draw_w']}/{gpu['power_limit_w']}W", flush=True)
-            print(f"[HARDWARE]   Driver: {gpu['driver_version']}  CUDA: {gpu['cuda_version']}", flush=True)
-        print(f"[HARDWARE] CPU:  {cpu['name']} ({cpu['cores_physical']}P/{cpu['cores_logical']}L cores @ {cpu['freq_max_ghz']} GHz)", flush=True)
-        print(f"[HARDWARE] RAM:  {ram['free_gb']}/{ram['total_gb']} GB libre ({ram['used_pct']}% usado)", flush=True)
+            print(
+                f"[HARDWARE]   VRAM: {gpu['vram_free_gb']}/{gpu['vram_total_gb']} GB libre",
+                flush=True,
+            )
+            print(
+                f"[HARDWARE]   Temp: {gpu['temp_c']}°C  Power: {gpu['power_draw_w']}/{gpu['power_limit_w']}W",
+                flush=True,
+            )
+            print(
+                f"[HARDWARE]   Driver: {gpu['driver_version']}  CUDA: {gpu['cuda_version']}",
+                flush=True,
+            )
+        print(
+            f"[HARDWARE] CPU:  {cpu['name']} ({cpu['cores_physical']}P/{cpu['cores_logical']}L cores @ {cpu['freq_max_ghz']} GHz)",
+            flush=True,
+        )
+        print(
+            f"[HARDWARE] RAM:  {ram['free_gb']}/{ram['total_gb']} GB libre ({ram['used_pct']}% usado)",
+            flush=True,
+        )
         if bench.get("available"):
-            print(f"[HARDWARE] BENCH: {bench['tflops_fp16']} TFLOPS FP16 (peak VRAM: {bench['vram_peak_gb']} GB)", flush=True)
+            print(
+                f"[HARDWARE] BENCH: {bench['tflops_fp16']} TFLOPS FP16 (peak VRAM: {bench['vram_peak_gb']} GB)",
+                flush=True,
+            )
 
         # Emit JSON for Tauri to parse
         print(f"[HARDWARE_JSON] {json.dumps(result, ensure_ascii=False)}", flush=True)

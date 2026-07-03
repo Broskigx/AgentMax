@@ -36,17 +36,21 @@ def _uuid() -> uuid.UUID:
 class Plan(Base):
     __tablename__ = "plans"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=_uuid
-    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     max_devices: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     duration_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     licenses: Mapped[list[License]] = relationship("License", back_populates="plan", lazy="noload")
 
@@ -69,19 +73,29 @@ class License(Base):
     user_email: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
     user_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     plan: Mapped[Plan] = relationship("Plan", back_populates="licenses", lazy="noload")
-    activations: Mapped[list[Activation]] = relationship("Activation", back_populates="license", lazy="noload")
+    activations: Mapped[list[Activation]] = relationship(
+        "Activation", back_populates="license", lazy="noload"
+    )
 
 
 class Activation(Base):
     __tablename__ = "activations"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
-    license_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("licenses.id"), nullable=False, index=True)
+    license_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("licenses.id"), nullable=False, index=True
+    )
     machine_fingerprint: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
     platform: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     os_version: Mapped[str] = mapped_column(String(128), nullable=False, default="")
@@ -89,6 +103,8 @@ class Activation(Base):
     client_version: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
 
     license: Mapped[License] = relationship("License", back_populates="activations", lazy="noload")

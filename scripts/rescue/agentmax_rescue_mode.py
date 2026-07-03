@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """AgentMax Rescue Mode.
 
 External diagnostic helper for cases where the desktop UI does not start.  It

@@ -1,4 +1,4 @@
-﻿"""Internationalization (i18n) manager for AgentMax."""
+"""Internationalization (i18n) manager for AgentMax."""
 
 from __future__ import annotations
 

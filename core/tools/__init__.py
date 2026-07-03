@@ -1,4 +1,4 @@
-﻿"""Professional tool backend for AgentMax."""
+"""Professional tool backend for AgentMax."""
 
 from core.tools.context_bridge import ToolContextBridge
 from core.tools.executor import ToolExecutor

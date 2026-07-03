@@ -79,9 +79,7 @@ class PermissionManager:
         self._validate_name(permission)
         if task_id or session_id or ttl_sec is not None:
             expires_at = time.monotonic() + max(0.0, ttl_sec) if ttl_sec is not None else None
-            self._scoped_grants.append(
-                PermissionGrant(permission, task_id, session_id, expires_at)
-            )
+            self._scoped_grants.append(PermissionGrant(permission, task_id, session_id, expires_at))
         else:
             self._granted.add(permission)
         self._denied.discard(permission)

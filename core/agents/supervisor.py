@@ -1043,8 +1043,7 @@ class SupervisorAgent(BaseAgent):
         if htlgg is None:
             return
         risk_name = str(
-            step.get("risk_level")
-            or (record.plan.risk_level if record.plan else "low")
+            step.get("risk_level") or (record.plan.risk_level if record.plan else "low")
         ).lower()
         risk = {
             "low": RiskLevel.R0,
@@ -1104,12 +1103,7 @@ class SupervisorAgent(BaseAgent):
             return
 
         record = self._active[task_id]
-        step = (
-            payload.get("step")
-            or payload.get("step_id")
-            or payload.get("description")
-            or "step"
-        )
+        step = payload.get("step") or payload.get("step_id") or payload.get("description") or "step"
         status = payload.get("status", "completed")
         record.reasoning_trace.append(f"step_complete: {step} -> {status}")
         log.debug("supervisor.step_complete", task_id=task_id, step=str(step), status=status)

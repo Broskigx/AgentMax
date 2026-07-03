@@ -1,4 +1,4 @@
-﻿"""Private reasoning state manager for AgentMax."""
+"""Private reasoning state manager for AgentMax."""
 
 from __future__ import annotations
 

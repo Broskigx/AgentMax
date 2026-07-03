@@ -1,4 +1,4 @@
-﻿"""Build tool execution context from the existing AgentMax runtime."""
+"""Build tool execution context from the existing AgentMax runtime."""
 
 from __future__ import annotations
 

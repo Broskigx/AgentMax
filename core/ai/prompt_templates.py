@@ -1,4 +1,4 @@
-﻿"""Prompt templates for all AI interactions."""
+"""Prompt templates for all AI interactions."""
 
 from __future__ import annotations
 

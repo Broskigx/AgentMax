@@ -1,1 +1,1 @@
-﻿"""AgentMax subpackage."""
+"""AgentMax subpackage."""

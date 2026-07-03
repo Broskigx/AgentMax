@@ -1,4 +1,4 @@
-﻿"""
+"""
 License manager -- validates Whop licenses at startup and every 30 minutes.
 
 Three-layer protection strategy

@@ -1,4 +1,4 @@
-﻿"""Tests for the exception hierarchy and domain error handlers."""
+"""Tests for the exception hierarchy and domain error handlers."""
 
 from __future__ import annotations
 

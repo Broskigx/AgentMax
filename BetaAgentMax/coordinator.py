@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 AgentMax Coordinator — Servidor central para entrenamiento federado REAL.
 
@@ -22,6 +22,7 @@ Protocolo TCP:
   [Siguiente ronda o fin]
   -> {"type":"completed"}  (al terminar todas las rondas)
 """
+
 import argparse
 import gzip
 import io
@@ -37,19 +38,24 @@ import torch
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser()
-parser.add_argument("--port",             type=int, default=12356)
-parser.add_argument("--rounds",           type=int, default=3)
+parser.add_argument("--port", type=int, default=12356)
+parser.add_argument("--rounds", type=int, default=3)
 parser.add_argument("--epochs_per_round", type=int, default=1)
 parser.add_argument("--min_contributors", type=int, default=1)
 parser.add_argument("--max_contributors", type=int, default=100)
-parser.add_argument("--wait_timeout",     type=int, default=300, help="Seg esperando contributors al inicio")
-parser.add_argument("--weights_timeout",  type=int, default=900, help="Seg esperando pesos de cada ronda")
-parser.add_argument("--train_dir",        default=".")
+parser.add_argument(
+    "--wait_timeout", type=int, default=300, help="Seg esperando contributors al inicio"
+)
+parser.add_argument(
+    "--weights_timeout", type=int, default=900, help="Seg esperando pesos de cada ronda"
+)
+parser.add_argument("--train_dir", default=".")
 args = parser.parse_args()
 
 MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 OUTPUT_DIR = os.path.join(args.train_dir, "outputs", "federated")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 
 # ── Logging con timestamp ────────────────────────────────────────────────────
 def log(tag: str, msg: str):
@@ -69,6 +75,7 @@ def send_large(conn: socket.socket, data: bytes):
         conn.sendall(data[sent:end])
         sent = end
 
+
 def recv_large(conn: socket.socket, timeout: float = 600.0) -> bytes | None:
     """Recibe un bloque de bytes con prefijo de 8 bytes."""
     try:
@@ -77,8 +84,8 @@ def recv_large(conn: socket.socket, timeout: float = 600.0) -> bytes | None:
         if not raw or len(raw) < 8:
             return None
         size = struct.unpack("!Q", raw)[0]
-        if size > 2 * 1024 ** 3:   # sanity: max 2 GB
-            log("ERROR", f"recv_large: tamaño sospechoso {size/1e9:.1f} GB")
+        if size > 2 * 1024**3:  # sanity: max 2 GB
+            log("ERROR", f"recv_large: tamaño sospechoso {size / 1e9:.1f} GB")
             return None
         data = bytearray()
         while len(data) < size:
@@ -100,6 +107,7 @@ def send_json(conn: socket.socket, data: dict):
         conn.sendall(struct.pack("!I", len(msg_bytes)) + msg_bytes)
     except Exception:
         pass
+
 
 def recv_json(conn: socket.socket, timeout: float = 30.0) -> dict | None:
     try:
@@ -144,9 +152,12 @@ def average_weights(weight_buffers: list[bytes]) -> bytes:
             # Convertir a float32 para el promedio
             sd_f32 = {k: v.float() for k, v in sd.items()}
             state_dicts.append(sd_f32)
-            log("AVG", f"  Adapter {i+1}: {len(sd)} tensors, {sum(v.numel() for v in sd.values())/1e6:.1f}M params")
+            log(
+                "AVG",
+                f"  Adapter {i + 1}: {len(sd)} tensors, {sum(v.numel() for v in sd.values()) / 1e6:.1f}M params",
+            )
         except Exception as e:
-            log("AVG", f"  [WARN] No se pudo cargar adapter {i+1}: {e}")
+            log("AVG", f"  [WARN] No se pudo cargar adapter {i + 1}: {e}")
 
     if not state_dicts:
         return b""
@@ -166,7 +177,10 @@ def average_weights(weight_buffers: list[bytes]) -> bytes:
     elapsed = time.time() - t0
     size_mb = len(compressed) / 1024 / 1024
     params = sum(v.numel() for v in avg_dict.values()) / 1e6
-    log("AVG", f"Promedio listo: {params:.1f}M params | {size_mb:.1f} MB comprimido | {elapsed:.1f}s")
+    log(
+        "AVG",
+        f"Promedio listo: {params:.1f}M params | {size_mb:.1f} MB comprimido | {elapsed:.1f}s",
+    )
     return compressed
 
 
@@ -254,11 +268,15 @@ class Coordinator:
                     "last_seen_sec": round(time.time() - c.last_seen, 1),
                     "alive": c.alive,
                 }
-                for c in self.contributors.values() if c.alive
+                for c in self.contributors.values()
+                if c.alive
             ]
 
     def emit_device_list(self):
-        print("[DEVICE_LIST]" + json.dumps(self.get_hardware_summary(), ensure_ascii=False), flush=True)
+        print(
+            "[DEVICE_LIST]" + json.dumps(self.get_hardware_summary(), ensure_ascii=False),
+            flush=True,
+        )
 
     def telemetry_loop(self):
         while self.running:
@@ -268,11 +286,19 @@ class Coordinator:
     def compute_optimal_config(self) -> dict:
         hw = self.get_hardware_summary()
         if not hw:
-            return {"batch_size": 1, "lora_rank": 16, "max_seq_length": 2048,
-                    "num_workers": 4, "learning_rate": 2e-4,
-                    "gradient_accumulation_steps": 4, "epochs": args.epochs_per_round,
-                    "n_contributors": 0, "total_vram_gb": 0, "min_vram_gb": 0,
-                    "weakest_gpu": "none"}
+            return {
+                "batch_size": 1,
+                "lora_rank": 16,
+                "max_seq_length": 2048,
+                "num_workers": 4,
+                "learning_rate": 2e-4,
+                "gradient_accumulation_steps": 4,
+                "epochs": args.epochs_per_round,
+                "n_contributors": 0,
+                "total_vram_gb": 0,
+                "min_vram_gb": 0,
+                "weakest_gpu": "none",
+            }
 
         min_vram = min(h["vram_gb"] for h in hw)
         total_vram = sum(h["vram_gb"] for h in hw)
@@ -349,7 +375,9 @@ class Coordinator:
             cid = self.next_id
             self.next_id += 1
             c = Contributor(
-                id=cid, conn=conn, addr=addr,
+                id=cid,
+                conn=conn,
+                addr=addr,
                 hostname=hello.get("hostname", f"node-{cid}"),
                 gpu=hello.get("gpu", "?"),
                 vram_gb=hello.get("vram_gb", 0),
@@ -362,15 +390,22 @@ class Coordinator:
             self.contributors[cid] = c
 
         n = len(self.contributors)
-        log("CONN", f"#{cid} conectado: {c.hostname} | {c.gpu} ({c.vram_gb} GB, {c.cores} cores) desde {addr}")
+        log(
+            "CONN",
+            f"#{cid} conectado: {c.hostname} | {c.gpu} ({c.vram_gb} GB, {c.cores} cores) desde {addr}",
+        )
         log("CONN", f"Total contributors: {n}/{args.max_contributors}")
         self.emit_device_list()
 
-        send_json(conn, {
-            "type": "welcome", "id": cid,
-            "n_contributors": n,
-            "min_to_start": args.min_contributors,
-        })
+        send_json(
+            conn,
+            {
+                "type": "welcome",
+                "id": cid,
+                "n_contributors": n,
+                "min_to_start": args.min_contributors,
+            },
+        )
 
         # Loop de mensajes entrantes
         while self.running and c.alive:
@@ -399,10 +434,17 @@ class Coordinator:
                 c.ram_pct = float(msg_data.get("ram_pct", 0) or 0)
                 c.temp_c = float(msg_data.get("temp_c", 0) or 0)
                 c.power_w = float(msg_data.get("power_w", 0) or 0)
-                c.power_target = float(msg_data.get("power_target", c.power_target) or c.power_target)
-                c.cpu_threads_target = int(msg_data.get("cpu_threads_target", c.cpu_threads_target) or 0)
+                c.power_target = float(
+                    msg_data.get("power_target", c.power_target) or c.power_target
+                )
+                c.cpu_threads_target = int(
+                    msg_data.get("cpu_threads_target", c.cpu_threads_target) or 0
+                )
                 shown_loss = f"{c.loss:.4f}" if c.loss is not None else "?"
-                log("PROG", f"#{cid} step={c.step} loss={shown_loss} gpu={c.gpu_util}% cpu={c.cpu_util}% vram={c.vram_used}GB")
+                log(
+                    "PROG",
+                    f"#{cid} step={c.step} loss={shown_loss} gpu={c.gpu_util}% cpu={c.cpu_util}% vram={c.vram_used}GB",
+                )
                 self.emit_device_list()
 
             elif mtype == "log":
@@ -443,7 +485,9 @@ class Coordinator:
                 if c.averaged_data:
                     size_mb = len(c.averaged_data) / 1024 / 1024
                     log("SEND", f"#{cid} enviando pesos promediados: {size_mb:.1f} MB")
-                    send_json(conn, {"type": "averaged", "round": rnd, "size": len(c.averaged_data)})
+                    send_json(
+                        conn, {"type": "averaged", "round": rnd, "size": len(c.averaged_data)}
+                    )
                     send_large(conn, c.averaged_data)
                     # Resetear para siguiente ronda
                     c.averaged_data = None
@@ -464,7 +508,7 @@ class Coordinator:
         # Desconexion
         with self.lock:
             c.alive = False
-            c.weights_ready.set()   # liberar si estaba bloqueado
+            c.weights_ready.set()  # liberar si estaba bloqueado
             c.averaged_ready.set()
             self.contributors.pop(cid, None)
         log("DISC", f"#{cid} desconectado. Contributors activos: {len(self.contributors)}")
@@ -498,14 +542,16 @@ class Coordinator:
         Espera pesos de todos los contributors activos,
         los promedia y los distribuye de vuelta.
         """
-        log("AVG", f"Esperando pesos de {len(active_ids)} contributors (timeout={args.weights_timeout}s)...")
+        log(
+            "AVG",
+            f"Esperando pesos de {len(active_ids)} contributors (timeout={args.weights_timeout}s)...",
+        )
         deadline = time.time() + args.weights_timeout
 
         # Esperar a que cada contributor sete su weights_ready
         with self.lock:
             contributors_snapshot = {
-                cid: c for cid, c in self.contributors.items()
-                if cid in active_ids and c.alive
+                cid: c for cid, c in self.contributors.items() if cid in active_ids and c.alive
             }
 
         for cid, c in contributors_snapshot.items():
@@ -520,7 +566,10 @@ class Coordinator:
                 c = self.contributors.get(cid)
                 if c and c.weights_data:
                     weight_buffers.append(c.weights_data)
-                    log("AVG", f"  Usando pesos de #{cid} ({len(c.weights_data)/1024/1024:.1f} MB)")
+                    log(
+                        "AVG",
+                        f"  Usando pesos de #{cid} ({len(c.weights_data) / 1024 / 1024:.1f} MB)",
+                    )
 
         if not weight_buffers:
             log("WARN", "No se recibieron pesos de ningun contributor")
@@ -533,7 +582,9 @@ class Coordinator:
         checkpoint_path = os.path.join(OUTPUT_DIR, f"round_{round_n}_avg.pt.gz")
         with open(checkpoint_path, "wb") as f:
             f.write(averaged)
-        log("SAVE", f"Checkpoint guardado: {checkpoint_path} ({len(averaged)/1024/1024:.1f} MB)")
+        log(
+            "SAVE", f"Checkpoint guardado: {checkpoint_path} ({len(averaged) / 1024 / 1024:.1f} MB)"
+        )
 
         # Distribuir pesos promediados a cada contributor
         with self.lock:
@@ -557,9 +608,7 @@ class Coordinator:
                     conn, addr = self.server_sock.accept()
                     conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     t = threading.Thread(
-                        target=self.handle_contributor,
-                        args=(conn, addr[0]),
-                        daemon=True
+                        target=self.handle_contributor, args=(conn, addr[0]), daemon=True
                     )
                     t.start()
                 except TimeoutError:
@@ -580,11 +629,20 @@ class Coordinator:
         log("INFO", f"{n} contributors listos")
         for h in hw:
             lbl = "Master" if h["id"] == 1 else f"Worker-{h['id']}"
-            log("INFO", f"  [{lbl}] #{h['id']}: {h['gpu']} ({h['vram_gb']} GB, {h['cores']} cores) @ {h['addr']}")
-        log("INFO", f"Config optima: batch={cfg['batch_size']} rank={cfg['lora_rank']} "
-            f"seq={cfg['max_seq_length']} workers={cfg['num_workers']}")
-        log("INFO", f"GPU mas debil: {cfg['weakest_gpu']} ({cfg['min_vram_gb']} GB) | "
-            f"VRAM total: {cfg['total_vram_gb']} GB")
+            log(
+                "INFO",
+                f"  [{lbl}] #{h['id']}: {h['gpu']} ({h['vram_gb']} GB, {h['cores']} cores) @ {h['addr']}",
+            )
+        log(
+            "INFO",
+            f"Config optima: batch={cfg['batch_size']} rank={cfg['lora_rank']} "
+            f"seq={cfg['max_seq_length']} workers={cfg['num_workers']}",
+        )
+        log(
+            "INFO",
+            f"GPU mas debil: {cfg['weakest_gpu']} ({cfg['min_vram_gb']} GB) | "
+            f"VRAM total: {cfg['total_vram_gb']} GB",
+        )
         log("INFO", f"Rondas: {args.rounds} | Epochs/ronda: {args.epochs_per_round}")
         log("INFO", "=" * 60)
 
@@ -601,7 +659,7 @@ class Coordinator:
                 log("WARN", "No hay contributors activos. Deteniendo.")
                 break
 
-            log("ROUND", f"{'='*20} RONDA {r}/{args.rounds} {'='*20}")
+            log("ROUND", f"{'=' * 20} RONDA {r}/{args.rounds} {'=' * 20}")
             log("ROUND", f"Contributors activos: {active_ids}")
             with self.lock:
                 for cid in active_ids:
@@ -615,19 +673,24 @@ class Coordinator:
 
             # Si hay pesos de la ronda anterior, enviarlos antes de start
             if seed_weights:
-                log("SEED", f"Enviando pesos semilla a todos ({len(seed_weights)/1024/1024:.1f} MB)...")
+                log(
+                    "SEED",
+                    f"Enviando pesos semilla a todos ({len(seed_weights) / 1024 / 1024:.1f} MB)...",
+                )
                 self.broadcast({"type": "seed_weights", "size": len(seed_weights)})
                 self.broadcast_large(seed_weights)
                 log("SEED", "Pesos semilla enviados")
 
             # Señal de inicio
-            self.broadcast({"type": "start", "round": r, "config": cfg, "has_seed": seed_weights is not None})
+            self.broadcast(
+                {"type": "start", "round": r, "config": cfg, "has_seed": seed_weights is not None}
+            )
 
             # Recolectar y promediar pesos al final de la ronda
             seed_weights = self.collect_and_average(r, active_ids)
 
             elapsed = time.time() - t_round_start
-            log("ROUND", f"Ronda {r} completada en {elapsed/60:.1f} min")
+            log("ROUND", f"Ronda {r} completada en {elapsed / 60:.1f} min")
 
         # Fin
         log("INFO", "Entrenamiento federado completado!")
@@ -643,7 +706,7 @@ class Coordinator:
             final_path = os.path.join(OUTPUT_DIR, "final_adapter.pt.gz")
             with open(final_path, "wb") as f:
                 f.write(seed_weights)
-            log("SAVE", f"Adapter final: {final_path} ({len(seed_weights)/1024/1024:.1f} MB)")
+            log("SAVE", f"Adapter final: {final_path} ({len(seed_weights) / 1024 / 1024:.1f} MB)")
 
     def stop(self):
         self.running = False

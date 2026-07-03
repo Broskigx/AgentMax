@@ -1,4 +1,4 @@
-﻿"""Upload **redacted** beta logs to the private AgentMax dataset repo on GitHub.
+"""Upload **redacted** beta logs to the private AgentMax dataset repo on GitHub.
 
 Design constraints (privacy + secret hygiene):
 - Uploads ONLY the ``redacted/`` (or ``approved/``) JSONL — never the raw logs.

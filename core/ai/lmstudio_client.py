@@ -1,4 +1,4 @@
-﻿"""LM Studio client -- Native API (http://localhost:1234/api/v1).
+"""LM Studio client -- Native API (http://localhost:1234/api/v1).
 
 AgentMax (Qwen3-VL-Thinking) corre dentro de LM Studio. Cuando la flag
 ``AGENTMAX_OBSERVABILITY=1`` esta activa, este cliente:

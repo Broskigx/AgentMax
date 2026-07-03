@@ -49,7 +49,11 @@ class UIAutomationAgent(BaseAgent):
     @property
     def capabilities(self) -> list[AgentCapability]:
         return [
-            AgentCapability("computer", "Primary: Batch of OpenAI Computer Use actions (click, move, type, key, scroll, drag, wait, screenshot) with precise coords from vision. Fast, powerful, adaptable to any PC (DPI, multi-monitor, scaling).", requires_input=True),
+            AgentCapability(
+                "computer",
+                "Primary: Batch of OpenAI Computer Use actions (click, move, type, key, scroll, drag, wait, screenshot) with precise coords from vision. Fast, powerful, adaptable to any PC (DPI, multi-monitor, scaling).",
+                requires_input=True,
+            ),
             AgentCapability("click", "Low-level (prefer computer tool)", requires_input=True),
             AgentCapability("type", "Low-level (prefer computer tool)", requires_input=True),
             AgentCapability("key", "Low-level (prefer computer tool)", requires_input=True),
@@ -69,7 +73,9 @@ class UIAutomationAgent(BaseAgent):
                 self._dpi_scale = info.get("scale", 1.0)
                 self._monitors = info.get("monitors", [])
                 if self._monitors:
-                    primary = next((m for m in self._monitors if m.get("is_primary")), self._monitors[0])
+                    primary = next(
+                        (m for m in self._monitors if m.get("is_primary")), self._monitors[0]
+                    )
                     self._screen_w = primary.get("width", self._screen_w)
                     self._screen_h = primary.get("height", self._screen_h)
                     left = min(int(m.get("x", 0)) for m in self._monitors)
@@ -140,16 +146,28 @@ class UIAutomationAgent(BaseAgent):
                         if coords:
                             x, y = self._normalize_coords(*coords)
                     if x is None or y is None:
-                        results.append({"action": action, "success": False, "error": "no coords (vision failed)"})
+                        results.append(
+                            {
+                                "action": action,
+                                "success": False,
+                                "error": "no coords (vision failed)",
+                            }
+                        )
                         continue
 
                     button = action.get("button", "left")
                     if action_type == "right_click":
                         button = "right"
-                    click_type = "double" if action_type == "double_click" else action.get("click_type", "left")
+                    click_type = (
+                        "double"
+                        if action_type == "double_click"
+                        else action.get("click_type", "left")
+                    )
 
                     # Fast + precise human simulation using config
-                    await asyncio.to_thread(self._sim.click, x, y, click_type if click_type != "double" else "left")
+                    await asyncio.to_thread(
+                        self._sim.click, x, y, click_type if click_type != "double" else "left"
+                    )
                     if action_type == "double_click":
                         await asyncio.sleep(0.04)  # Optimized
                         await asyncio.to_thread(self._sim.click, x, y, "left")
@@ -157,12 +175,17 @@ class UIAutomationAgent(BaseAgent):
                     await self.ctx.capture.wait_for_settle()
                     verification = await self._post_click_verify(action)
                     verified_success = verification or not action.get("expected_outcome")
-                    results.append({
-                        "action": action_type, "x": x, "y": y, "button": button,
-                        "success": verified_success,
-                        "verified": verification,
-                        "error": None if verified_success else "expected outcome not observed",
-                    })
+                    results.append(
+                        {
+                            "action": action_type,
+                            "x": x,
+                            "y": y,
+                            "button": button,
+                            "success": verified_success,
+                            "verified": verification,
+                            "error": None if verified_success else "expected outcome not observed",
+                        }
+                    )
 
                 elif action_type == "move":
                     if x is None or y is None:
@@ -170,53 +193,65 @@ class UIAutomationAgent(BaseAgent):
                         continue
                     await asyncio.to_thread(self._sim.move_to, x, y)
                     verified = await self._verify_expected(action)
-                    results.append({
-                        "action": "move",
-                        "x": x,
-                        "y": y,
-                        "success": verified,
-                        "error": None if verified else "expected outcome not observed",
-                    })
+                    results.append(
+                        {
+                            "action": "move",
+                            "x": x,
+                            "y": y,
+                            "success": verified,
+                            "error": None if verified else "expected outcome not observed",
+                        }
+                    )
 
                 elif action_type == "type":
                     text = action.get("text") or action.get("value", "")
                     await asyncio.to_thread(self._sim.type_text, text)
                     await self.ctx.capture.wait_for_settle()
                     verified = await self._verify_expected(action)
-                    results.append({
-                        "action": "type",
-                        "success": verified,
-                        "length": len(text),
-                        "error": None if verified else "expected outcome not observed",
-                    })
+                    results.append(
+                        {
+                            "action": "type",
+                            "success": verified,
+                            "length": len(text),
+                            "error": None if verified else "expected outcome not observed",
+                        }
+                    )
 
                 elif action_type in ("key", "hotkey", "press"):
                     keys = action.get("text") or action.get("keys", "")
                     await asyncio.to_thread(self._sim.press_hotkey, keys)
                     await asyncio.sleep(0.06)
                     verified = await self._verify_expected(action)
-                    results.append({
-                        "action": "key",
-                        "keys": keys,
-                        "success": verified,
-                        "error": None if verified else "expected outcome not observed",
-                    })
+                    results.append(
+                        {
+                            "action": "key",
+                            "keys": keys,
+                            "success": verified,
+                            "error": None if verified else "expected outcome not observed",
+                        }
+                    )
 
                 elif action_type == "scroll":
                     sx = action.get("x", self._screen_w // 2)
                     sy = action.get("y", self._screen_h // 2)
                     scroll_x = action.get("scroll_x", 0)
                     scroll_y = action.get("scroll_y", action.get("amount", 0))
-                    direction = "down" if scroll_y > 0 else ("up" if scroll_y < 0 else "right" if scroll_x > 0 else "left")
+                    direction = (
+                        "down"
+                        if scroll_y > 0
+                        else ("up" if scroll_y < 0 else "right" if scroll_x > 0 else "left")
+                    )
                     amt = abs(int(scroll_y or scroll_x or 3))
                     await asyncio.to_thread(self._sim.scroll, sx, sy, direction, amt)
                     await self.ctx.capture.wait_for_settle()
                     verified = await self._verify_expected(action)
-                    results.append({
-                        "action": "scroll",
-                        "success": verified,
-                        "error": None if verified else "expected outcome not observed",
-                    })
+                    results.append(
+                        {
+                            "action": "scroll",
+                            "success": verified,
+                            "error": None if verified else "expected outcome not observed",
+                        }
+                    )
 
                 elif action_type == "drag":
                     path = action.get("path") or []
@@ -234,11 +269,13 @@ class UIAutomationAgent(BaseAgent):
                         )
                     await self.ctx.capture.wait_for_settle()
                     verified = len(path) > 0 and await self._verify_expected(action)
-                    results.append({
-                        "action": "drag",
-                        "success": verified,
-                        "error": None if verified else "expected outcome not observed",
-                    })
+                    results.append(
+                        {
+                            "action": "drag",
+                            "success": verified,
+                            "error": None if verified else "expected outcome not observed",
+                        }
+                    )
 
                 elif action_type == "wait":
                     ms = action.get("duration_ms", action.get("duration_sec", 0.3) * 1000)
@@ -246,10 +283,18 @@ class UIAutomationAgent(BaseAgent):
                     results.append({"action": "wait", "success": True})
 
                 elif action_type == "screenshot":
-                    results.append({"action": "screenshot", "success": True, "needs_new_view": True})
+                    results.append(
+                        {"action": "screenshot", "success": True, "needs_new_view": True}
+                    )
 
                 else:
-                    results.append({"action": action_type, "success": False, "error": f"unsupported action: {action_type}"})
+                    results.append(
+                        {
+                            "action": action_type,
+                            "success": False,
+                            "error": f"unsupported action: {action_type}",
+                        }
+                    )
 
             except Exception as e:
                 results.append({"action": action_type, "success": False, "error": str(e)})
@@ -257,8 +302,11 @@ class UIAutomationAgent(BaseAgent):
         overall_success = all(r.get("success", False) for r in results)
         return ActionResult(
             success=overall_success,
-            data={"results": results, "screen": {"w": self._screen_w, "h": self._screen_h, "scale": self._dpi_scale}},
-            reasoning=f"Executed {len(actions)} computer actions (vision-grounded, { 'success' if overall_success else 'partial' })"
+            data={
+                "results": results,
+                "screen": {"w": self._screen_w, "h": self._screen_h, "scale": self._dpi_scale},
+            },
+            reasoning=f"Executed {len(actions)} computer actions (vision-grounded, {'success' if overall_success else 'partial'})",
         )
 
     async def click(self, step: dict) -> ActionResult:
@@ -316,7 +364,9 @@ class UIAutomationAgent(BaseAgent):
 
             # Try accessibility first for precision (if available)
             if "text" in target or "description" in target:
-                desc = target.get("text") or target.get("description") or step.get("description", "")
+                desc = (
+                    target.get("text") or target.get("description") or step.get("description", "")
+                )
                 # Vision primary
                 el = await self.ctx.capture.find_element(desc)
                 if el and getattr(el, "bounds", None):
@@ -446,16 +496,27 @@ class UIAutomationAgent(BaseAgent):
 
         if target:
             # Convert to computer action for unified execution
-            return await self.execute_computer_actions([
-                {"action": "click", "target": target}  # will resolve via _resolve_target
-            ])
+            return await self.execute_computer_actions(
+                [
+                    {"action": "click", "target": target}  # will resolve via _resolve_target
+                ]
+            )
 
         if "x" in step and "y" in step:
-            return await self.execute_computer_actions([
-                {"action": "click", "x": step["x"], "y": step["y"], "button": step.get("click_type", "left")}
-            ])
+            return await self.execute_computer_actions(
+                [
+                    {
+                        "action": "click",
+                        "x": step["x"],
+                        "y": step["y"],
+                        "button": step.get("click_type", "left"),
+                    }
+                ]
+            )
 
-        return ActionResult(success=False, error="navigate requires vision target/description or explicit coords")
+        return ActionResult(
+            success=False, error="navigate requires vision target/description or explicit coords"
+        )
 
     # _launch_or_focus_app removed per requirements.
     # Computer control must be resolved purely by the AI via vision (screenshots/pixel analysis)

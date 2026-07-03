@@ -1,4 +1,4 @@
-﻿"""
+"""
 Thinking parser for chain-of-thought models (Qwen3-Thinking, DeepSeek-R1, ...).
 
 Modelos como `Qwen3-VL-8B-Thinking` (alias: AgentMax) emiten razonamiento

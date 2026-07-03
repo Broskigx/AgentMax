@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Internationalization (i18n) System
 
 Complete i18n support with multiple languages,

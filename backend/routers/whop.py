@@ -1,4 +1,4 @@
-﻿"""
+"""
 Whop Webhook Router - Handles subscription events from Whop
 
 This router processes webhooks from Whop for:

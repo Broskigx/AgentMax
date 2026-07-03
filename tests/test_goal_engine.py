@@ -47,7 +47,9 @@ def _make_engine(ai_responses: list[str]) -> tuple[GoalEngine, _FakeBus, _InMemo
     bus = _FakeBus()
     ai = MagicMock()
     responses = iter(ai_responses)
-    ai.chat_query = AsyncMock(side_effect=lambda **_kw: next(responses, '{"done": true, "summary": "done"}'))
+    ai.chat_query = AsyncMock(
+        side_effect=lambda **_kw: next(responses, '{"done": true, "summary": "done"}')
+    )
     engine = GoalEngine(
         redis_service=redis,
         bus=bus,
@@ -107,11 +109,13 @@ async def test_goal_completes_when_ai_says_done():
 
 @pytest.mark.asyncio
 async def test_goal_executes_message_action():
-    action_response = json.dumps({
-        "done": False,
-        "action": {"type": "message", "params": {"text": "Working on it..."}},
-        "reasoning": "Sending progress update",
-    })
+    action_response = json.dumps(
+        {
+            "done": False,
+            "action": {"type": "message", "params": {"text": "Working on it..."}},
+            "reasoning": "Sending progress update",
+        }
+    )
     done_response = json.dumps({"done": True, "summary": "Done"})
     engine, bus, _ = _make_engine([action_response, done_response])
 
@@ -127,11 +131,13 @@ async def test_goal_executes_message_action():
 @pytest.mark.asyncio
 async def test_goal_cancellation():
     # AI never says done — loop will run until cancelled
-    never_done = json.dumps({
-        "done": False,
-        "action": {"type": "message", "params": {"text": "still going"}},
-        "reasoning": "not done",
-    })
+    never_done = json.dumps(
+        {
+            "done": False,
+            "action": {"type": "message", "params": {"text": "still going"}},
+            "reasoning": "not done",
+        }
+    )
     engine, bus, _ = _make_engine([never_done] * 100)
 
     goal_id = await engine.start_goal("Endless task")
@@ -148,11 +154,13 @@ async def test_goal_cancellation():
 
 @pytest.mark.asyncio
 async def test_goal_stops_at_max_iterations():
-    never_done = json.dumps({
-        "done": False,
-        "action": {"type": "message", "params": {"text": "iteration"}},
-        "reasoning": "not done",
-    })
+    never_done = json.dumps(
+        {
+            "done": False,
+            "action": {"type": "message", "params": {"text": "iteration"}},
+            "reasoning": "not done",
+        }
+    )
     engine, bus, _ = _make_engine([never_done] * 50)
 
     goal_id = await engine.start_goal("Bounded task")
@@ -160,6 +168,7 @@ async def test_goal_stops_at_max_iterations():
     # patch _ITER_DELAY_S indirectly via a tiny max_iterations)
     # Patch the delay constant so tests don't take 10 seconds
     import core.goal.goal_engine as ge_mod
+
     original_delay = ge_mod._ITER_DELAY_S
     ge_mod._ITER_DELAY_S = 0.01
     try:

@@ -160,6 +160,7 @@ class CircuitBreaker:
         half_open_probes = kwargs.pop("half_open_max", half_open_probes)
         if kwargs:
             import warnings
+
             warnings.warn(f"Unknown CircuitBreaker kwargs: {set(kwargs)}", stacklevel=2)
 
         self.name = name

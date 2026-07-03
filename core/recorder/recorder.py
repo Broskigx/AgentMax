@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Recorder System
 
 Session recording and playback functionality

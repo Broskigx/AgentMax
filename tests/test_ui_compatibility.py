@@ -117,7 +117,9 @@ def test_first_run_and_lm_detection_state_are_wired() -> None:
 
     assert "fetchLMStudioModels" in store
     assert "has_loaded_model" in store or "lmstudioModels" in store
-    assert "AGENTMAX_DATA_DIR" in alert or "first" in alert.lower() or "model" in alert.lower()  # indirect
+    assert (
+        "AGENTMAX_DATA_DIR" in alert or "first" in alert.lower() or "model" in alert.lower()
+    )  # indirect
 
 
 def test_app_root_applies_professional_guards_and_onboarding() -> None:

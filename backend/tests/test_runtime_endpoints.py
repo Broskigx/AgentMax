@@ -1,4 +1,4 @@
-﻿"""Runtime discovery endpoints used by the desktop beta."""
+"""Runtime discovery endpoints used by the desktop beta."""
 
 from __future__ import annotations
 

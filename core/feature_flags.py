@@ -34,8 +34,7 @@ def _read_json(path: Path, errors: list[str]) -> dict[str, Any]:
         return {}
     except json.JSONDecodeError as exc:
         errors.append(
-            f"{path.name}: invalid JSON at line {exc.lineno}, "
-            f"column {exc.colno}: {exc.msg}"
+            f"{path.name}: invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}"
         )
         return {}
     if not isinstance(value, dict):

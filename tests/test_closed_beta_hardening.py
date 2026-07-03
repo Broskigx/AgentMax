@@ -260,9 +260,7 @@ async def test_physical_actions_serialize_while_internal_work_concurs() -> None:
 
         async def _mouse_move(self, request, context):
             self.physical_active += 1
-            self.max_physical_active = max(
-                self.max_physical_active, self.physical_active
-            )
+            self.max_physical_active = max(self.max_physical_active, self.physical_active)
             self.started.set()
             await asyncio.sleep(0.04)
             self.physical_active -= 1
@@ -358,18 +356,14 @@ def test_confidence_policy_thresholds_and_sensitive_surface() -> None:
     risk = ToolRiskAnalyzer()
     click = registry.get("mouse.click")
 
-    assert risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.95)[
-        "action"
-    ] == "normal"
-    assert risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.75)[
-        "action"
-    ] == "pre_verify"
-    assert risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.55)[
-        "action"
-    ] == "reobserve"
-    assert risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.40)[
-        "action"
-    ] == "block"
+    assert risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.95)["action"] == "normal"
+    assert (
+        risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.75)["action"] == "pre_verify"
+    )
+    assert (
+        risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.55)["action"] == "reobserve"
+    )
+    assert risk.verification_policy(click, {"x": 1, "y": 1}, confidence=0.40)["action"] == "block"
 
     computer = registry.get("computer.execute")
     report = risk.analyze(
@@ -597,9 +591,7 @@ def test_dataset_settings_cannot_override_disabled_startup_gate(
     )
 
     settings = server._dataset_settings()
-    saved = server._save_dataset_settings(
-        {"enabled": True, "store_images": True}
-    )
+    saved = server._save_dataset_settings({"enabled": True, "store_images": True})
 
     assert settings["enabled"] is False
     assert settings["store_images"] is False

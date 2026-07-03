@@ -1,4 +1,4 @@
-﻿"""Central safety supervisor for local AgentMax tool calls.
+"""Central safety supervisor for local AgentMax tool calls.
 
 This module is deliberately independent from the concrete executor so it can be
 unit-tested and reused by CLI rescue mode, Python backend routes, and future

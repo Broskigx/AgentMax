@@ -1,4 +1,4 @@
-﻿"""
+"""
 AgentMax Security Configuration and Anti-Crack Router
 
 This module provides security endpoints for the anti-crack system

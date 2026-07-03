@@ -1,4 +1,4 @@
-﻿"""Typed contracts for the AgentMax tool backend.
+"""Typed contracts for the AgentMax tool backend.
 
 The tool layer intentionally sits below planning/reasoning and above concrete
 agents.  It gives every operation one stable schema, one permission path, one

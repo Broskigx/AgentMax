@@ -22,12 +22,10 @@ LOG_NAMES = {
 
 
 class BetaLogger:
-    def __init__(self, log_dir: str | Path | None = None, storage: StorageService | None = None) -> None:
-        self.log_dir = (
-            Path(log_dir)
-            if log_dir
-            else get_beta_config().data_dir / "logs"
-        )
+    def __init__(
+        self, log_dir: str | Path | None = None, storage: StorageService | None = None
+    ) -> None:
+        self.log_dir = Path(log_dir) if log_dir else get_beta_config().data_dir / "logs"
         self.storage = storage or StorageService()
 
     def log(

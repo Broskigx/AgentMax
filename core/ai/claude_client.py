@@ -1,4 +1,4 @@
-﻿"""Claude API client -- vision, reasoning, and structured tool use with prompt caching."""
+"""Claude API client -- vision, reasoning, and structured tool use with prompt caching."""
 
 from __future__ import annotations
 

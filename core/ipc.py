@@ -1,4 +1,4 @@
-﻿"""
+"""
 IPC Server - high-performance bridge between UI and Python core.
 
 Architecture:
@@ -707,9 +707,7 @@ class IPCServer:
         loop = asyncio.get_running_loop()
 
         async def _submit(text: str) -> str:
-            return await self._agent_pool["supervisor"].submit_task(
-                TaskRequest(description=text)
-            )
+            return await self._agent_pool["supervisor"].submit_task(TaskRequest(description=text))
 
         async def _poll(task_id: str) -> dict | None:
             return self._agent_pool["supervisor"].get_task_result(task_id)
@@ -863,7 +861,11 @@ class IPCServer:
             goal_id = parts[-2]
             action_id = str(data.get("action_id", "")).strip()
             approved = parts[-1] == "approve"
-            ok = engine.approve_action(goal_id, action_id) if approved else engine.reject_action(goal_id, action_id)
+            ok = (
+                engine.approve_action(goal_id, action_id)
+                if approved
+                else engine.reject_action(goal_id, action_id)
+            )
             return {"goal_id": goal_id, "action_id": action_id, "approved": approved, "ok": ok}
 
         if method == "DELETE":
@@ -935,7 +937,10 @@ class IPCServer:
                 return {"reply": f"No se encontró goal con ID '{goal_id_prefix}'.", "task_id": None}
             for gid in matched:
                 await engine.stop_goal(gid)
-            return {"reply": f"Goal(s) cancelado(s): {', '.join(gid[:8] for gid in matched)}", "task_id": None}
+            return {
+                "reply": f"Goal(s) cancelado(s): {', '.join(gid[:8] for gid in matched)}",
+                "task_id": None,
+            }
 
         if message.strip() == "/goal":
             engine = self._goal_engine
@@ -946,7 +951,9 @@ class IPCServer:
             for gid in active:
                 state = engine.get_state(gid)
                 if state:
-                    lines.append(f"  • {gid[:8]}… — iter {state.iterations}/{state.max_iterations} — {state.objective[:60]}")
+                    lines.append(
+                        f"  • {gid[:8]}… — iter {state.iterations}/{state.max_iterations} — {state.objective[:60]}"
+                    )
             return {"reply": "\n".join(lines), "task_id": None}
 
         # Log incoming message to session logger (local, redacted).

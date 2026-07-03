@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Nuitka build for AgentMax — compiles the AgentMax CLI to a native binary.
 

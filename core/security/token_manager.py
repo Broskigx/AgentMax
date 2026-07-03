@@ -18,7 +18,7 @@ class UnlimitedTokenError(Exception):
 class TokenConfig:
     """Per-manager budget configuration."""
 
-    daily_cap: int = 0      # 0 = unlimited
+    daily_cap: int = 0  # 0 = unlimited
     unlimited: bool = False
 
     def is_unlimited(self) -> bool:
@@ -101,7 +101,8 @@ class TokenManager:
                 self._usage.clear()
             else:
                 to_remove = [
-                    k for k in self._usage
+                    k
+                    for k in self._usage
                     if (plan is None or k[0] == plan) and (user is None or k[1] == user)
                 ]
                 for k in to_remove:
