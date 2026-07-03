@@ -52,8 +52,9 @@ __pycache__/
 # Rust / Tauri
 target/
 
-# Data / generated databases
-data/
+# Data / generated databases — anchored to the repo root: an unanchored data/
+# also hid the bundled skill manifests in core/skills/data/ (CI ran with 0 skills).
+/data/
 *.db
 *.sqlite
 *.sqlite3
