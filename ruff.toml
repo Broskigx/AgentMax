@@ -3,6 +3,17 @@
 line-length = 100
 target-version = "py311"
 
+# Nested clones and legacy artifact dumps are not part of this codebase; some
+# contain permission-locked dirs that break directory traversal on Windows.
+extend-exclude = [
+    "AgentMax",
+    "AgentMax_legacy_artifacts_20260606",
+    "ffg",
+    "lora_adapters",
+    "terminals",
+    "node_modules",
+]
+
 [lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP"]
 ignore = [

@@ -1,0 +1,3 @@
+# Development-only tooling. Runtime deps live in requirements.txt.
+# ruff is pinned exactly: lint AND format output must match CI byte-for-byte.
+ruff==0.15.13
