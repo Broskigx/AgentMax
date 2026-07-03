@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import httpx
 import structlog
@@ -87,7 +87,9 @@ class WebSearchAgent(BaseAgent):
             return ActionResult(success=False, error="No query provided")
 
         await self.log_terminal(f"Searching: {query}", "info")
-        search_url = f"https://duckduckgo.com/html/?q={query}"
+        # URL-encode the query so spaces and reserved chars (& # ? =) don't
+        # break the request or silently truncate the search terms.
+        search_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
 
         try:
             async with httpx.AsyncClient(
