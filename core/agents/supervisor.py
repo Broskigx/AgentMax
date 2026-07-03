@@ -166,6 +166,24 @@ class SupervisorAgent(BaseAgent):
                 return {"id": task_id, "status": rec.status.name, "error": rec.error}
         return None
 
+    def get_task_result(self, task_id: str) -> dict[str, Any] | None:
+        """Return a task's status plus a visible outcome summary (active or done).
+
+        Used by outward-facing adapters (e.g. the A2A server) that need a single
+        answer string once a task reaches a terminal state.
+        """
+        record = self._active.get(task_id)
+        if record is None:
+            record = next((r for r in self._history if r.request.id == task_id), None)
+        if record is None:
+            return None
+        return {
+            "id": task_id,
+            "status": record.status.name,
+            "summary": self._public_result_summary(record),
+            "error": record.error,
+        }
+
     # ──────────────────────────────────────────────────────────────
     # Main loop
     # ──────────────────────────────────────────────────────────────

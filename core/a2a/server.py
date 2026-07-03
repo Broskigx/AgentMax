@@ -36,11 +36,13 @@ class A2AServer:
         handler: Callable[[str], str] | None = None,
         on_event: EventCallback | None = None,
         auth_token: str | None = None,
+        max_tasks: int = 256,
     ) -> None:
         self._card = agent_card
         self._handler = handler
         self._on_event = on_event
         self._auth_token = auth_token or None
+        self._max_tasks = max(1, max_tasks)
         self._tasks: dict[str, A2ATask] = {}
         if self._auth_token:
             self._card.authentication = {"schemes": ["bearer"]}
@@ -103,6 +105,10 @@ class A2AServer:
 
         task = A2ATask(input_text=input_text)
         self._tasks[task.task_id] = task
+        # Long-lived servers must not retain tasks unboundedly: drop the oldest
+        # entries (dict preserves insertion order) once the cap is exceeded.
+        while len(self._tasks) > self._max_tasks:
+            self._tasks.pop(next(iter(self._tasks)))
         self._emit("a2a.task_received", {"task_id": task.task_id, "input": input_text})
 
         task.state = TaskState.WORKING

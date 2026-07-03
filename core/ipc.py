@@ -548,6 +548,15 @@ class IPCServer:
                             await supervisor.confirm_task(task_id)
                     return {"confirmed": True}
 
+            elif path == "/.well-known/agent.json" and method == "GET":
+                return self._a2a_agent_card()
+
+            elif path == "/a2a/tasks" and method == "POST":
+                return await self._handle_a2a_tasks(data or {}, headers or {})
+
+            elif path == "/mcp" and method == "POST":
+                return await self._handle_mcp(data or {})
+
             elif path == "/api/tokens":
                 return await self._handle_tokens()
 
@@ -638,6 +647,111 @@ class IPCServer:
         finally:
             elapsed = (time.perf_counter() - start) * 1000
             self._metrics["avg_latency_ms"] = self._metrics["avg_latency_ms"] * 0.9 + elapsed * 0.1
+
+    # ──────────────────────────────────────────────────────────────
+    # Outward-facing MCP / A2A server endpoints
+    #
+    # NOTE: live wiring not yet verified end-to-end against a running app —
+    # the testable cores live in core/server_endpoints.py. These bridge the
+    # sync protocol servers to the async executor via run_coroutine_threadsafe
+    # from a worker thread (same pattern as the skill executor). They are NOT
+    # added to the IPC auth allowlist, so when IPC auth is enabled they sit
+    # behind it; review the exposure/auth model before production use.
+    # ──────────────────────────────────────────────────────────────
+
+    def _a2a_agent_card(self) -> dict:
+        """Serve the A2A discovery card advertising AgentMax's bundled skills."""
+        from core.server_endpoints import agent_card_dict
+
+        try:
+            from core.skills.registry import SkillRegistry
+
+            skills = SkillRegistry.default().names()
+        except Exception:  # noqa: BLE001 - discovery must never crash on skill load
+            skills = []
+        server_cfg = getattr(self._config, "server", None)
+        host = getattr(server_cfg, "host", "127.0.0.1")
+        port = getattr(server_cfg, "api_port", 7790)
+        return agent_card_dict(url=f"http://{host}:{port}", skills=skills)
+
+    def _a2a_error(self, data: dict, message: str) -> dict:
+        return {
+            "jsonrpc": "2.0",
+            "id": data.get("id", ""),
+            "error": {"code": -32000, "message": message},
+        }
+
+    async def _handle_a2a_tasks(self, data: dict, headers: dict[str, str]) -> dict:
+        """Accept an A2A task: submit it to the supervisor and await the result."""
+        if not self._agent_pool.get("supervisor"):
+            return self._a2a_error(data, "supervisor_not_ready")
+
+        server = self._ensure_a2a_server()
+        auth = headers.get("authorization") or headers.get("Authorization") or ""
+        token = auth[7:] if auth.lower().startswith("bearer ") else None
+        return await asyncio.to_thread(server.handle_request, data, token=token)
+
+    def _ensure_a2a_server(self) -> Any:
+        # One long-lived server instance: A2ATask state lives on the server, so
+        # a per-request instance would make tasks/get and tasks/cancel always
+        # miss tasks created by an earlier tasks/send request.
+        server = getattr(self, "_a2a_server", None)
+        if server is not None:
+            return server
+
+        from core.a2a.protocol import AgentCard
+        from core.a2a.server import A2AServer
+        from core.agents.supervisor import TaskRequest
+        from core.server_endpoints import run_a2a_task
+
+        loop = asyncio.get_running_loop()
+
+        async def _submit(text: str) -> str:
+            return await self._agent_pool["supervisor"].submit_task(
+                TaskRequest(description=text)
+            )
+
+        async def _poll(task_id: str) -> dict | None:
+            return self._agent_pool["supervisor"].get_task_result(task_id)
+
+        def handler(text: str) -> str:
+            future = asyncio.run_coroutine_threadsafe(
+                run_a2a_task(text, submit=_submit, poll=_poll), loop
+            )
+            return future.result()
+
+        server = A2AServer(AgentCard(name="AgentMax"), handler=handler)
+        self._a2a_server = server
+        return server
+
+    async def _handle_mcp(self, data: dict) -> dict:
+        """Handle an MCP JSON-RPC request, exposing the supervisor's tool catalog."""
+        supervisor = self._agent_pool.get("supervisor")
+        if not supervisor:
+            return {
+                "jsonrpc": "2.0",
+                "id": data.get("id", 0),
+                "error": {"code": -32000, "message": "supervisor_not_ready"},
+            }
+
+        from core.mcp.registry_server import build_tool_mcp_server
+        from core.server_endpoints import mcp_response
+
+        executor = supervisor._tool_executor  # noqa: SLF001 - runtime wiring
+        loop = asyncio.get_running_loop()
+        agent_pool = self._agent_pool
+        runtime = self._runtime
+
+        def run_tool(tool_id: str, args: dict) -> Any:
+            coro = executor.execute_step(
+                {"tool_id": tool_id, "input": args},
+                agent_pool=agent_pool,
+                runtime=runtime,
+            )
+            return asyncio.run_coroutine_threadsafe(coro, loop).result()
+
+        server = build_tool_mcp_server(executor.registry, run_tool)
+        return await asyncio.to_thread(mcp_response, server, data)
 
     async def _handle_tokens(self) -> dict:
         """Return the current state of the TokenManager (per-plan + per-user breakdown)."""
@@ -1036,8 +1150,9 @@ class IPCServer:
                 query=query,
             )
 
-        host = getattr(self._config, "host", "127.0.0.1")
-        port = getattr(self._config.server, "api_port", 7790)
+        server_cfg = getattr(self._config, "server", None)
+        host = getattr(server_cfg, "host", "127.0.0.1")
+        port = getattr(server_cfg, "api_port", 7790)
 
         config = uvicorn.Config(app, host=host, port=port, log_level="error")
         server = uvicorn.Server(config)
@@ -1087,12 +1202,13 @@ class IPCServer:
         self._bus.subscribe("*", self._collect_event)
         self._batch_task = asyncio.create_task(self._batch_sender())
 
-        ws_port = getattr(self._config, "ws_port", 7788)
+        server_cfg = getattr(self._config, "server", None)
+        ws_port = getattr(server_cfg, "ws_port", 7788)
         log.info("ipc.ws_listening", port=ws_port)
 
         async with websockets.serve(
             self._ws_handler,
-            getattr(self._config, "host", "127.0.0.1"),
+            getattr(server_cfg, "host", "127.0.0.1"),
             ws_port,
         ):
             await asyncio.Future()

@@ -105,6 +105,21 @@ def test_task_get_and_cancel() -> None:
     assert cancelled["result"]["state"] == "canceled"
 
 
+def test_task_retention_is_capped() -> None:
+    server = _server(max_tasks=2)
+    ids = []
+    for i in range(3):
+        resp = server.handle_request(A2ARequest("tasks/send", {"input": f"t{i}"}).to_dict())
+        ids.append(resp["result"]["id"])
+
+    # The oldest task was evicted; the two newest remain reachable.
+    oldest = server.handle_request(A2ARequest("tasks/get", {"id": ids[0]}).to_dict())
+    assert oldest["error"]["code"] == -32602
+    for task_id in ids[1:]:
+        got = server.handle_request(A2ARequest("tasks/get", {"id": task_id}).to_dict())
+        assert got["result"]["id"] == task_id
+
+
 def test_unknown_method_and_missing_task_error() -> None:
     server = _server()
     bad_method = server.handle_request(A2ARequest("tasks/explode", {}).to_dict())
