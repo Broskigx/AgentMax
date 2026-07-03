@@ -3,7 +3,13 @@
 HardwareDetective — escanea GPU, CPU, RAM y hace benchmark real.
 Emite JSON por stdout para que Rust lo pueda parsear via training:log.
 """
-import json, os, platform, subprocess, sys, time
+import json
+import os
+import platform
+import subprocess
+import sys
+import time
+
 
 def _run(cmd, timeout=5):
     try:

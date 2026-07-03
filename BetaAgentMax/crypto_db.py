@@ -3,12 +3,17 @@
 CryptoDB — SQLite cifrada con AES-256-GCM + HMAC-SHA256 por registro.
 Requiere: pip install cryptography
 """
-import hashlib, hmac, json, os, sqlite3, time
+import hashlib
+import hmac
+import json
+import os
+import sqlite3
+import time
 from typing import Any, Optional
 
 try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     _CRYPTO_OK = True
 except ImportError:

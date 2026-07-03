@@ -22,9 +22,17 @@ Protocolo TCP:
   [Siguiente ronda o fin]
   -> {"type":"completed"}  (al terminar todas las rondas)
 """
-import argparse, gzip, io, json, os, socket, struct, sys, threading, time
+import argparse
+import gzip
+import io
+import json
+import os
+import socket
+import struct
+import threading
+import time
 from dataclasses import dataclass, field
-from typing import Optional
+
 import torch
 
 # ── Args ─────────────────────────────────────────────────────────────────────
@@ -61,7 +69,7 @@ def send_large(conn: socket.socket, data: bytes):
         conn.sendall(data[sent:end])
         sent = end
 
-def recv_large(conn: socket.socket, timeout: float = 600.0) -> Optional[bytes]:
+def recv_large(conn: socket.socket, timeout: float = 600.0) -> bytes | None:
     """Recibe un bloque de bytes con prefijo de 8 bytes."""
     try:
         conn.settimeout(timeout)
@@ -93,7 +101,7 @@ def send_json(conn: socket.socket, data: dict):
     except Exception:
         pass
 
-def recv_json(conn: socket.socket, timeout: float = 30.0) -> Optional[dict]:
+def recv_json(conn: socket.socket, timeout: float = 30.0) -> dict | None:
     try:
         conn.settimeout(timeout)
         raw_len = conn.recv(4)
@@ -177,7 +185,7 @@ class Contributor:
     status: str = "waiting"
     round: int = 0
     step: int = 0
-    loss: Optional[float] = None
+    loss: float | None = None
     gpu_util: float = 0.0
     vram_used: float = 0.0
     vram_total: float = 0.0
@@ -195,8 +203,8 @@ class Contributor:
     # Sincronizacion por ronda
     weights_ready: threading.Event = field(default_factory=threading.Event)
     averaged_ready: threading.Event = field(default_factory=threading.Event)
-    weights_data: Optional[bytes] = None
-    averaged_data: Optional[bytes] = None
+    weights_data: bytes | None = None
+    averaged_data: bytes | None = None
 
 
 # ── Coordinator ──────────────────────────────────────────────────────────────
@@ -271,13 +279,20 @@ class Coordinator:
         min_cores = min((h.get("cpu_threads_target") or h["cores"]) for h in hw)
 
         # Escalar batch y rank segun la GPU mas debil
-        if   min_vram >= 24: bs, lr = 8, 128
-        elif min_vram >= 16: bs, lr = 4, 64
-        elif min_vram >= 12: bs, lr = 4, 64
-        elif min_vram >= 10: bs, lr = 2, 32
-        elif min_vram >= 8:  bs, lr = 2, 32
-        elif min_vram >= 6:  bs, lr = 1, 16
-        else:                bs, lr = 1, 8
+        if min_vram >= 24:
+            bs, lr = 8, 128
+        elif min_vram >= 16:
+            bs, lr = 4, 64
+        elif min_vram >= 12:
+            bs, lr = 4, 64
+        elif min_vram >= 10:
+            bs, lr = 2, 32
+        elif min_vram >= 8:
+            bs, lr = 2, 32
+        elif min_vram >= 6:
+            bs, lr = 1, 16
+        else:
+            bs, lr = 1, 8
 
         return {
             "batch_size": bs,
@@ -547,7 +562,7 @@ class Coordinator:
                         daemon=True
                     )
                     t.start()
-                except socket.timeout:
+                except TimeoutError:
                     continue
                 except Exception:
                     break
@@ -574,7 +589,7 @@ class Coordinator:
         log("INFO", "=" * 60)
 
         # Rondas de entrenamiento federado
-        seed_weights: Optional[bytes] = None
+        seed_weights: bytes | None = None
         for r in range(1, args.rounds + 1):
             self.current_round = r
             t_round_start = time.time()
@@ -601,7 +616,6 @@ class Coordinator:
             # Si hay pesos de la ronda anterior, enviarlos antes de start
             if seed_weights:
                 log("SEED", f"Enviando pesos semilla a todos ({len(seed_weights)/1024/1024:.1f} MB)...")
-                send_json_to_all = lambda d: self.broadcast(d)
                 self.broadcast({"type": "seed_weights", "size": len(seed_weights)})
                 self.broadcast_large(seed_weights)
                 log("SEED", "Pesos semilla enviados")
@@ -637,7 +651,7 @@ class Coordinator:
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    log("INFO", f"AgentMax Coordinator v2.0 — FedAvg Real")
+    log("INFO", "AgentMax Coordinator v2.0 — FedAvg Real")
     log("INFO", f"Puerto: {args.port} | Max contributors: {args.max_contributors}")
     log("INFO", f"Rondas: {args.rounds} | Epochs/ronda: {args.epochs_per_round}")
     log("INFO", f"Min contributors: {args.min_contributors} | Output: {OUTPUT_DIR}")

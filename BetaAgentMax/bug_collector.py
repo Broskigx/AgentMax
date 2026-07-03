@@ -32,13 +32,12 @@ import re
 import sys
 import time
 import traceback
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 # Crypto DB optional
 try:
-    from crypto_db import get_db, CryptoDB
+    from crypto_db import CryptoDB, get_db
     _DB_AVAILABLE = True
 except ImportError:
     _DB_AVAILABLE = False
@@ -76,7 +75,7 @@ class CollectionConsent:
     enabled: bool = True
 
     @classmethod
-    def from_env(cls) -> "CollectionConsent":
+    def from_env(cls) -> CollectionConsent:
         if os.environ.get("AgentMax_NO_TELEMETRY", "").strip() in ("1", "true", "yes"):
             return cls(enabled=False, training_errors=False, oom_errors=False)
         c = cls()
@@ -286,10 +285,10 @@ class DataCollector:
 
     def __init__(
         self,
-        db: Optional["CryptoDB"] = None,
+        db: CryptoDB | None = None,
         db_path: str = "data/AgentMax.db",
         password: str = "AgentMax_default",
-        consent: Optional[CollectionConsent] = None,
+        consent: CollectionConsent | None = None,
         aggressive_scrub: bool = True,
     ):
         self.consent = consent or CollectionConsent.from_env()
@@ -325,7 +324,7 @@ class DataCollector:
         output: str = "",
         error: str = "",
         latency_ms: float = 0.0,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Capture a tool call result. Most valuable training signal."""
         if not self.consent.enabled or not self.consent.tool_outcomes:
             self._session_stats["dropped_consent"] += 1
@@ -358,8 +357,8 @@ class DataCollector:
         user_input: str,
         model_output: str,
         corrected_output: str,
-        context_messages: Optional[list[dict]] = None,
-    ) -> Optional[int]:
+        context_messages: list[dict] | None = None,
+    ) -> int | None:
         """User corrected the model — high-quality training signal."""
         if not self.consent.enabled or not self.consent.corrections:
             self._session_stats["dropped_consent"] += 1
@@ -397,7 +396,7 @@ class DataCollector:
         tool_sequence: list[str],
         success: bool,
         duration_ms: float = 0.0,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Capture a tool sequence pattern — NO content, just structure."""
         if not self.consent.enabled or not self.consent.workflows:
             self._session_stats["dropped_consent"] += 1
@@ -420,7 +419,7 @@ class DataCollector:
         exception: Exception,
         config: dict,
         stage: str = "training",
-    ) -> Optional[int]:
+    ) -> int | None:
         """Capture training crashes. Always allowed (structural info only)."""
         if not self.consent.enabled or not self.consent.training_errors:
             self._session_stats["dropped_consent"] += 1
@@ -461,7 +460,7 @@ class DataCollector:
             **vram_info,
         }, normalized=normalized, severity=severity)
 
-    def capture_oom(self, config: dict, batch_size: int, seq_len: int) -> Optional[int]:
+    def capture_oom(self, config: dict, batch_size: int, seq_len: int) -> int | None:
         """OOM is config-only data, always allowed."""
         if not self.consent.enabled or not self.consent.oom_errors:
             self._session_stats["dropped_consent"] += 1
@@ -525,7 +524,7 @@ class DataCollector:
 
         return examples
 
-    def _record_to_example(self, cat: str, r: dict, system: str) -> Optional[list[dict]]:
+    def _record_to_example(self, cat: str, r: dict, system: str) -> list[dict] | None:
         if cat == self.CAT_CORRECTION:
             return [
                 {"role": "system", "content": system},
@@ -579,7 +578,7 @@ class DataCollector:
 
     # ── Internals ─────────────────────────────────────────────────────────
 
-    def _save(self, category: str, data: dict, *, normalized: str, severity: str) -> Optional[int]:
+    def _save(self, category: str, data: dict, *, normalized: str, severity: str) -> int | None:
         # Dedup check
         count = self.dedup.seen(category, normalized)
         if count >= self.MAX_OCCURRENCES:
@@ -669,11 +668,11 @@ class BugCollector(DataCollector):
     """Alias for backwards compatibility — prefer DataCollector."""
 
     def capture_chat_feedback(self, user_input: str, model_output: str,
-                              corrected_output: str, session_id: str = "") -> Optional[int]:
+                              corrected_output: str, session_id: str = "") -> int | None:
         """Legacy method — delegates to capture_correction (session_id discarded for privacy)."""
         return self.capture_correction(user_input, model_output, corrected_output)
 
-    def capture_tool_error(self, tool_name: str, args: dict, error: str) -> Optional[int]:
+    def capture_tool_error(self, tool_name: str, args: dict, error: str) -> int | None:
         """Legacy method — delegates to capture_tool_call(success=False)."""
         return self.capture_tool_call(tool=tool_name, args=args, success=False, error=error)
 

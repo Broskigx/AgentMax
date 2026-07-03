@@ -12,10 +12,18 @@ Uso:
   python contributor.py --coordinator_ip 192.168.196.1 --coordinator_port 12356
   python contributor.py --coordinator_ip 192.168.196.1 --max_power
 """
-import argparse, ctypes, gzip, io, json, os, platform, socket, struct, subprocess
-import sys, tempfile, threading, time
-from pathlib import Path
-from typing import Optional
+import argparse
+import ctypes
+import gzip
+import io
+import json
+import os
+import platform
+import socket
+import struct
+import subprocess
+import sys
+import time
 
 # ── Args ─────────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser()
@@ -335,7 +343,7 @@ def send_json_msg(conn: socket.socket, data: dict):
     msg_bytes = (json.dumps(data, ensure_ascii=False) + "\n").encode()
     conn.sendall(struct.pack("!I", len(msg_bytes)) + msg_bytes)
 
-def recv_json_msg(conn: socket.socket, timeout: float = 60.0) -> Optional[dict]:
+def recv_json_msg(conn: socket.socket, timeout: float = 60.0) -> dict | None:
     try:
         conn.settimeout(timeout)
         raw_len = conn.recv(4)
@@ -360,7 +368,7 @@ def send_large(conn: socket.socket, data: bytes):
         conn.sendall(data[sent:sent+chunk])
         sent += chunk
 
-def recv_large(conn: socket.socket, timeout: float = 600.0) -> Optional[bytes]:
+def recv_large(conn: socket.socket, timeout: float = 600.0) -> bytes | None:
     try:
         conn.settimeout(timeout)
         raw = conn.recv(8)
@@ -380,7 +388,7 @@ def recv_large(conn: socket.socket, timeout: float = 600.0) -> Optional[bytes]:
         return None
 
 
-def build_progress_payload(round_n: int, steps_done: int, loss: Optional[float]) -> dict:
+def build_progress_payload(round_n: int, steps_done: int, loss: float | None) -> dict:
     stats = get_gpu_stats()
     sys_stats = get_system_stats()
     payload = {
@@ -415,7 +423,7 @@ def publish_progress(conn: socket.socket, payload: dict):
 
 
 # ── Pesos del adapter ─────────────────────────────────────────────────────────
-def pack_adapter_weights(adapter_dir: str) -> Optional[bytes]:
+def pack_adapter_weights(adapter_dir: str) -> bytes | None:
     """Lee el adapter guardado por Unsloth/PEFT y lo comprime para envio."""
     try:
         import torch
@@ -545,7 +553,7 @@ def run_training_round(cfg: dict, round_n: int, cid: int,
     steps_done = 0
     last_report = 0.0
     report_interval = 5  # segundos entre reportes de progress
-    last_loss: Optional[float] = None
+    last_loss: float | None = None
 
     # Filtros para reenviar al coordinador las lineas mas utiles del log unsloth
     _LOG_KEYWORDS = (
@@ -674,7 +682,6 @@ def contribute():
                 if mtype == "start":
                     r = msg.get("round", 1)
                     cfg = msg.get("config", {})
-                    has_seed = msg.get("has_seed", False)
 
                     log("ROUND", f"{'='*20} RONDA {r} {'='*20}")
                     log("ROUND", f"Config: batch={cfg.get('batch_size')} rank={cfg.get('lora_rank')} "

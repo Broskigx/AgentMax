@@ -4,8 +4,9 @@ AutoConfigEngine — calcula la config optima de entrenamiento segun el hardware
 Consultar via: python auto_config_engine.py --vram 8.6 --ram 32 --cores 12
 O importar como modulo: from auto_config_engine import AutoConfigEngine
 """
-import argparse, json, math, os
-
+import argparse
+import json
+import os
 
 # Tabla: (vram_min_gb, vram_max_gb) -> (batch_size, lora_rank, num_workers, max_seq_len, grad_accum)
 _VRAM_TABLE = [
