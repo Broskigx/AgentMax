@@ -8,6 +8,7 @@ trained AI assistant with specialized capabilities.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -336,7 +337,7 @@ class AgentMaxBot:
     async def send_message(self, user_id: str, request: BotRequest) -> BotResponse:
         """Send a message to AgentMax Bot and get response"""
 
-        start_time = datetime.utcnow()
+        start_time = time.perf_counter()
 
         # Get or create conversation
         if request.conversation_id and request.conversation_id in self._conversations:
@@ -385,7 +386,7 @@ class AgentMaxBot:
             finish_reason="stop",
             model_version=self.config.name,
             usage=usage,
-            timing_ms=int((datetime.utcnow() - start_time).total_seconds() * 1000),
+            timing_ms=int((time.perf_counter() - start_time) * 1000),
             tool_calls=tool_calls,
         )
 

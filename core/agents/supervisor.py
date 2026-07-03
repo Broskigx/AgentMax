@@ -95,6 +95,9 @@ class SupervisorAgent(BaseAgent):
         self._active: dict[str, TaskRecord] = {}
         self._history: list[TaskRecord] = []
         self._semaphore = asyncio.Semaphore(3)  # max 3 concurrent tasks
+        # Strong refs to in-flight execution tasks: asyncio holds only weak
+        # references, so an unreferenced task can be garbage-collected mid-run.
+        self._execution_tasks: set[asyncio.Task[None]] = set()
         # Confirmation state -- initialized here to avoid lazy getattr creation
         # and guarantee cleanup even when tasks are externally cancelled.
         self._pending_confirmations: dict[str, asyncio.Event] = {}
@@ -202,7 +205,9 @@ class SupervisorAgent(BaseAgent):
             _, request = self._queue.get_nowait()
         except asyncio.QueueEmpty:
             return
-        asyncio.create_task(self._execute_task(request), name=f"task-{request.id}")
+        task = asyncio.create_task(self._execute_task(request), name=f"task-{request.id}")
+        self._execution_tasks.add(task)
+        task.add_done_callback(self._execution_tasks.discard)
 
     async def _execute_task(self, request: TaskRequest) -> None:
         async with self._semaphore:

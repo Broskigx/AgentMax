@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from backend.models.base import Base
+from backend.models.base import Base, utcnow
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -46,10 +46,10 @@ class Plan(Base):
         "metadata", JSON, nullable=False, default=dict
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
     )
 
     licenses: Mapped[list[License]] = relationship("License", back_populates="plan", lazy="noload")
@@ -77,10 +77,10 @@ class License(Base):
         "metadata", JSON, nullable=False, default=dict
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
     )
 
     plan: Mapped[Plan] = relationship("Plan", back_populates="licenses", lazy="noload")
@@ -104,7 +104,7 @@ class Activation(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=utcnow
     )
 
     license: Mapped[License] = relationship("License", back_populates="activations", lazy="noload")

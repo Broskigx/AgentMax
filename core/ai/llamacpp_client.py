@@ -63,6 +63,9 @@ class LlamaCppSidecarClient(BaseAIClient):
             base_url=self._base_url,
         )
         self._process: asyncio.subprocess.Process | None = None
+        # Keep the sidecar log-pump tasks referenced (asyncio only holds weak
+        # refs) and cancellable on close().
+        self._pipe_tasks: list[asyncio.Task[None]] = []
         self._call_count = 0
         self._total_tokens = 0
         self._prompt_tokens = 0
@@ -145,8 +148,10 @@ class LlamaCppSidecarClient(BaseAIClient):
             stderr=asyncio.subprocess.PIPE,
             env=os.environ.copy(),
         )
-        asyncio.create_task(self._pipe_log(self._process.stdout, "stdout"))
-        asyncio.create_task(self._pipe_log(self._process.stderr, "stderr"))
+        self._pipe_tasks = [
+            asyncio.create_task(self._pipe_log(self._process.stdout, "stdout")),
+            asyncio.create_task(self._pipe_log(self._process.stderr, "stderr")),
+        ]
 
     async def _pipe_log(
         self,
@@ -375,3 +380,6 @@ class LlamaCppSidecarClient(BaseAIClient):
             except TimeoutError:
                 self._process.kill()
                 await self._process.wait()
+        for task in self._pipe_tasks:
+            task.cancel()
+        self._pipe_tasks.clear()

@@ -502,6 +502,10 @@ class AutomationEngine:
         # Minute-truncated timestamp of the last scheduled fire per automation,
         # so a cron entry runs at most once per matching minute.
         self._last_scheduled_run: dict[str, datetime] = {}
+        self._scheduler_task: asyncio.Task | None = None
+        # Strong refs to schedule-triggered executions: asyncio keeps only weak
+        # references, so an unreferenced task can be garbage-collected mid-run.
+        self._triggered_tasks: set[asyncio.Task] = set()
         self._running = False
 
     # ── Registry ──────────────────────────────────────────────────────────────
@@ -535,11 +539,16 @@ class AutomationEngine:
         log.info("automation_engine_started")
 
         # Start scheduler
-        asyncio.create_task(self._scheduler_loop())
+        self._scheduler_task = asyncio.create_task(self._scheduler_loop())
 
     async def stop(self):
         """Stop the automation engine"""
         self._running = False
+
+        # Stop the scheduler loop immediately instead of waiting for its next tick
+        if self._scheduler_task is not None:
+            self._scheduler_task.cancel()
+            self._scheduler_task = None
 
         # Cancel all scheduled tasks
         for task in self._scheduled_tasks.values():
@@ -701,9 +710,11 @@ class AutomationEngine:
                 automation_id=automation.automation_id,
                 schedule=automation.schedule,
             )
-            asyncio.create_task(
+            task = asyncio.create_task(
                 self.execute_automation(automation, {}, trigger_type=TriggerType.SCHEDULE)
             )
+            self._triggered_tasks.add(task)
+            task.add_done_callback(self._triggered_tasks.discard)
             launched += 1
 
         return launched

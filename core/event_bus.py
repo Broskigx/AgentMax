@@ -79,6 +79,13 @@ class EventBus:
         self._critical_queue: asyncio.Queue[Event] = asyncio.Queue()
         self._running = False
         self._dispatch_task: asyncio.Task[None] | None = None
+        # Loop the bus runs on -- captured in start() so publish_sync can hop
+        # threads with call_soon_threadsafe (get_event_loop() raises inside a
+        # worker thread, which is exactly where publish_sync is called from).
+        self._loop: asyncio.AbstractEventLoop | None = None
+        # Strong refs to in-flight handler tasks; asyncio only keeps weak ones,
+        # so without this a handler task can be garbage-collected mid-run.
+        self._handler_tasks: set[asyncio.Task[None]] = set()
         self._metrics: dict[str, int] = defaultdict(int)
 
     # ──────────────────────────────────────────────────────────────
@@ -108,11 +115,24 @@ class EventBus:
 
     def publish_sync(self, event: Event) -> None:
         """Non-async publish -- safe to call from sync context (e.g. watchdog thread)."""
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            self._metrics["dropped_sync"] += 1
+            log.warning("event_bus.publish_sync_dropped", topic=event.topic, reason="not_started")
+            return
+        loop.call_soon_threadsafe(self._enqueue_nowait, event)
+
+    def _enqueue_nowait(self, event: Event) -> None:
+        """Enqueue from the bus loop thread without awaiting (publish_sync path)."""
         try:
-            loop = asyncio.get_event_loop()
-            loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self.publish(event)))
-        except RuntimeError:
-            pass
+            if event.priority == PRIORITY_CRITICAL:
+                self._critical_queue.put_nowait(event)
+            else:
+                self._queue.put_nowait((event.priority, event))
+            self._metrics["published"] += 1
+        except asyncio.QueueFull:
+            self._metrics["dropped_sync"] += 1
+            log.warning("event_bus.publish_sync_dropped", topic=event.topic, reason="queue_full")
 
     async def panic(self, payload: Any, source: str = "system") -> None:
         """
@@ -134,6 +154,7 @@ class EventBus:
 
     async def start(self) -> None:
         self._running = True
+        self._loop = asyncio.get_running_loop()
         self._dispatch_task = asyncio.create_task(self._dispatch_loop(), name="event-bus")
         log.info("event_bus.started")
 
@@ -201,10 +222,12 @@ class EventBus:
             # Normal events run in background to keep bus responsive.
             # The callback logs unhandled exceptions so they don't vanish silently.
             def _log_exc(t: asyncio.Task, _topic: str = event.topic) -> None:
+                self._handler_tasks.discard(t)
                 if not t.cancelled() and (exc := t.exception()):
                     log.warning("event_bus.handler_error", topic=_topic, error=str(exc))
 
             for task in tasks:
+                self._handler_tasks.add(task)
                 task.add_done_callback(_log_exc)
 
     def _collect_handlers(self, topic: str) -> list[Handler]:

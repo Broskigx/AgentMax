@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from backend.models.base import Base
+from backend.models.base import Base, utcnow
 from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,7 +47,7 @@ class AuditEvent(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )
 
 
@@ -63,5 +63,5 @@ class TelemetryEvent(Base):
     platform: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )

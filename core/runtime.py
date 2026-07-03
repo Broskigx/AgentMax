@@ -51,6 +51,7 @@ class AgentMaxRuntime:
         # Idempotency flag so the bus subscriber to system.shutdown doesn't
         # re-enter shutdown() when shutdown() itself publishes the event.
         self._shutting_down: bool = False
+        self._shutdown_task: asyncio.Future | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
     # --------------------------------------------------------------------------
@@ -435,7 +436,8 @@ class AgentMaxRuntime:
 
         # Use a named shutdown callback so each lambda captures `self`, not `sig`.
         def _shutdown_cb() -> None:
-            asyncio.ensure_future(self.shutdown())
+            # Keep a strong ref so the shutdown task can't be GC'd mid-run.
+            self._shutdown_task = asyncio.ensure_future(self.shutdown())
 
         def _shutdown_threadsafe(_signum: int, _frame: object) -> None:
             asyncio.run_coroutine_threadsafe(self.shutdown(), loop)
